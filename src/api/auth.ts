@@ -21,6 +21,8 @@ export interface RegisterParams {
 export interface RegisterResult {
   userId: string
   username: string
+  nickname: string
+  email: string
 }
 
 export interface RefreshTokenParams {
@@ -38,24 +40,42 @@ export interface LogoutParams {
   refreshToken?: string
 }
 
+function buildRegisterPayload(params: RegisterParams) {
+  const safeUsername = params.username.trim()
+
+  return {
+    username: safeUsername,
+    nickname: safeUsername,
+    email: `${safeUsername}@placeholder.local`,
+    password: params.password
+  }
+}
+
 export function login(params: LoginParams) {
-  return request.post<ApiResponse<LoginResult>>('/auth/login', params, {
-    skipAuth: true
-  })
+  return request.post<ApiResponse<LoginResult>>(
+    '/auth/login',
+    {
+      account: params.username,
+      password: params.password
+    },
+    {
+      skipAuth: true
+    }
+  )
 }
 
 export function register(params: RegisterParams) {
-  return request.post<ApiResponse<RegisterResult>>('/auth/register', params, {
+  return request.post<ApiResponse<RegisterResult>>('/auth/register', buildRegisterPayload(params), {
     skipAuth: true
   })
 }
 
 export function refreshToken(params: RefreshTokenParams) {
-  return request.post<ApiResponse<RefreshTokenResult>>('/auth/refresh-token', params, {
+  return request.post<ApiResponse<RefreshTokenResult>>('/auth/refresh', params, {
     skipAuth: true
   })
 }
 
 export function logout(params?: LogoutParams) {
-  return request.post<ApiResponse<null>>('/auth/logout', params)
+  return request.post<ApiResponse<{ ok: true }>>('/auth/logout', params)
 }

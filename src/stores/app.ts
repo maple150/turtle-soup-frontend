@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 
-import { APP_TITLE, SOCKET_STATUS_LABELS } from '@/constants/labels'
+import { APP_SUBTITLE, APP_TITLE, SOCKET_STATUS_LABELS } from '@/constants/labels'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
-export type SocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
+export type SocketStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface NavigationItem {
   label: string
@@ -20,8 +20,8 @@ export interface AppNotification {
 
 interface AppState {
   projectName: string
+  projectSubtitle: string
   themeMode: ThemeMode
-  sidebarCollapsed: boolean
   pageLoading: boolean
   socketStatus: SocketStatus
   navigation: NavigationItem[]
@@ -41,8 +41,8 @@ function createNotification(
 export const useAppStore = defineStore('app', {
   state: (): AppState => ({
     projectName: APP_TITLE,
+    projectSubtitle: APP_SUBTITLE,
     themeMode: 'light',
-    sidebarCollapsed: false,
     pageLoading: false,
     socketStatus: 'idle',
     navigation: [
@@ -52,29 +52,17 @@ export const useAppStore = defineStore('app', {
       { label: '个人中心', key: '/profile' },
       { label: '管理后台', key: '/admin' }
     ],
-    notifications: [
-      createNotification({
-        type: 'info',
-        title: '项目骨架已就绪',
-        description: '基础布局、路由和状态管理已经可用，可以继续接入业务功能。'
-      })
-    ]
+    notifications: []
   }),
 
   getters: {
-    navigationCount: (state) => state.navigation.length,
     latestNotification: (state) => state.notifications[0] ?? null,
-    isRealtimeConnected: (state) => state.socketStatus === 'connected',
     socketStatusLabel: (state) => SOCKET_STATUS_LABELS[state.socketStatus]
   },
 
   actions: {
     setThemeMode(mode: ThemeMode) {
       this.themeMode = mode
-    },
-
-    toggleSidebar(force?: boolean) {
-      this.sidebarCollapsed = typeof force === 'boolean' ? force : !this.sidebarCollapsed
     },
 
     setPageLoading(loading: boolean) {
@@ -96,16 +84,6 @@ export const useAppStore = defineStore('app', {
 
     clearNotifications() {
       this.notifications = []
-    },
-
-    async bootstrapApp() {
-      this.setPageLoading(true)
-
-      try {
-        await Promise.resolve()
-      } finally {
-        this.setPageLoading(false)
-      }
     }
   }
 })

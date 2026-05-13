@@ -49,13 +49,13 @@ const props = defineProps<{
 const panels = computed(() => [
   {
     label: '回合',
-    value: `${props.currentRound}/${props.totalRounds}`,
+    value: props.currentRound > 0 ? `第 ${props.currentRound} 回合` : '未开始',
     caption: '当前进度'
   },
   {
-    label: '计时',
-    value: props.formattedTimer,
-    caption: '本回合时间'
+    label: '状态',
+    value: props.phaseLabel,
+    caption: '房间游戏状态'
   },
   {
     label: '问题数',
@@ -65,7 +65,7 @@ const panels = computed(() => [
   {
     label: '回答数',
     value: String(props.answers.length),
-    caption: '主持人回应'
+    caption: '主持人回答'
   }
 ])
 </script>

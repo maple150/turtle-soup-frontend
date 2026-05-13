@@ -1,26 +1,10 @@
 import { defineStore } from 'pinia'
 
 import { ANSWER_TYPE_LABELS, GAME_PHASE_LABELS } from '@/constants/labels'
-import http from '@/services/http'
+import { WS_CLIENT_EVENTS } from '@/socket/events'
 import { getSocket } from '@/services/socket'
 
-export type GamePhase = 'idle' | 'waiting' | 'countdown' | 'playing' | 'settlement' | 'finished'
-
-export interface GameScoreItem {
-  userId: string
-  nickname: string
-  score: number
-}
-
-export interface GameActionRecord {
-  id: string
-  roomId: string
-  actorId: string
-  actorName: string
-  type: 'submit' | 'skip' | 'system'
-  content: string
-  createdAt: string
-}
+export type GamePhase = 'idle' | 'waiting' | 'playing' | 'revealed' | 'finished'
 
 export interface FormalQuestion {
   id: string
@@ -28,7 +12,7 @@ export interface FormalQuestion {
   senderId: string
   senderName: string
   content: string
-  status: 'pending' | 'answered' | 'skipped'
+  status: 'pending' | 'answered'
   createdAt: string
   answeredAt: string | null
 }
@@ -38,13 +22,23 @@ export interface AnswerRecord {
   roomId: string
   questionId: string
   responderName: string
-  outcome: 'yes' | 'no' | 'irrelevant' | 'partial'
+  outcome: 'yes' | 'no' | 'irrelevant'
+  content: string
+  createdAt: string
+}
+
+export interface GameActionRecord {
+  id: string
+  roomId: string
+  actorId: string
+  actorName: string
+  type: 'system'
   content: string
   createdAt: string
 }
 
 interface GameState {
-  currentRoomId: string | null
+  currentRoomCode: string | null
   phase: GamePhase
   currentRound: number
   totalRounds: number
@@ -52,7 +46,6 @@ interface GameState {
   soupTitle: string
   prompt: string
   hostHint: string
-  scoreboard: GameScoreItem[]
   questionList: FormalQuestion[]
   answerRecords: AnswerRecord[]
   actionHistory: GameActionRecord[]
@@ -61,64 +54,20 @@ interface GameState {
   lastEventAt: string | null
 }
 
-function createMockScoreboard(): GameScoreItem[] {
-  return [
-    { userId: 'user-001', nickname: '主持人小七', score: 120 },
-    { userId: 'user-002', nickname: '阿澜', score: 110 },
-    { userId: 'user-003', nickname: '米琪', score: 95 }
-  ]
-}
-
-function createMockQuestions(roomId: string): FormalQuestion[] {
-  return [
-    {
-      id: `${roomId}-question-1`,
-      roomId,
-      senderId: 'user-002',
-      senderName: '阿澜',
-      content: '主角进入现场之前，关键事件是不是已经发生了？',
-      status: 'answered',
-      createdAt: new Date(Date.now() - 1000 * 60 * 7).toISOString(),
-      answeredAt: new Date(Date.now() - 1000 * 60 * 6).toISOString()
-    },
-    {
-      id: `${roomId}-question-2`,
-      roomId,
-      senderId: 'user-003',
-      senderName: '米琪',
-      content: '关键线索是不是和误会有关，而不是犯罪行为本身？',
-      status: 'pending',
-      createdAt: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-      answeredAt: null
-    }
-  ]
-}
-
-function createMockAnswerRecords(roomId: string): AnswerRecord[] {
-  return [
-    {
-      id: `${roomId}-answer-1`,
-      roomId,
-      questionId: `${roomId}-question-1`,
-      responderName: '主持人小七',
-      outcome: 'yes',
-      content: '是。真正关键的事情在主角注意到之前就已经发生了。',
-      createdAt: new Date(Date.now() - 1000 * 60 * 6).toISOString()
-    }
-  ]
+function formatTimestamp(value: number | null) {
+  return value ? new Date(value).toISOString() : null
 }
 
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
-    currentRoomId: null,
+    currentRoomCode: null,
     phase: 'idle',
     currentRound: 0,
-    totalRounds: 5,
+    totalRounds: 1,
     timerSeconds: 0,
     soupTitle: '',
     prompt: '',
-    hostHint: '',
-    scoreboard: [],
+    hostHint: '主持人只回答“是 / 否 / 无关”，避免直接说出答案。',
     questionList: [],
     answerRecords: [],
     actionHistory: [],
@@ -128,124 +77,103 @@ export const useGameStore = defineStore('game', {
   }),
 
   getters: {
-    isGameActive: (state) => ['countdown', 'playing', 'settlement'].includes(state.phase),
-    canSubmitAction: (state) => state.phase === 'playing',
-    formattedTimer: (state) => {
-      const minutes = Math.floor(state.timerSeconds / 60)
-      const seconds = state.timerSeconds % 60
-
-      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-    },
-    leaderBoard: (state) => [...state.scoreboard].sort((a, b) => b.score - a.score),
     phaseLabel: (state) => GAME_PHASE_LABELS[state.phase],
-    pendingQuestions: (state) => state.questionList.filter((item) => item.status === 'pending'),
-    answeredQuestions: (state) => state.questionList.filter((item) => item.status === 'answered'),
-    latestAnswerRecord: (state) => state.answerRecords.at(-1) ?? null
+    pendingQuestions: (state) => state.questionList.filter((item) => item.status === 'pending')
   },
 
   actions: {
-    async initializeForRoom(roomId: string) {
-      this.currentRoomId = roomId
-      await this.fetchGameSnapshot(roomId)
-      this.attachGameSocketListeners(roomId)
+    initializeForRoom(roomCode: string) {
+      this.currentRoomCode = roomCode
+      this.connected = true
     },
 
-    async fetchGameSnapshot(roomId: string) {
-      this.loading = true
-
-      try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        this.currentRoomId = roomId
-        this.phase = 'waiting'
-        this.currentRound = 1
-        this.totalRounds = 5
-        this.timerSeconds = 0
-        this.soupTitle = '被打开的便当盒'
-        this.prompt =
-          '一个人在公司茶水间打开便当盒，说了句“又来了”，随后立刻辞职。为什么？'
-        this.hostHint = '主持人只回答“是 / 否 / 无关 / 部分相关”，不要直接解释谜底。'
-        this.scoreboard = createMockScoreboard()
-        this.questionList = createMockQuestions(roomId)
-        this.answerRecords = createMockAnswerRecords(roomId)
-        this.actionHistory = [
-          {
-            id: `${roomId}-action-1`,
-            roomId,
-            actorId: 'system',
-            actorName: '系统',
-            type: 'system',
-            content: '游戏快照已初始化。',
-            createdAt: new Date().toISOString()
-          }
-        ]
-        this.lastEventAt = new Date().toISOString()
-      } finally {
-        this.loading = false
-      }
-    },
-
-    async submitAction(payload: {
-      roomId: string
-      actorId: string
-      actorName: string
-      content: string
-      type?: 'submit' | 'skip'
+    applyRoomSnapshot(snapshot: {
+      roomCode: string
+      status: 'waiting' | 'playing' | 'revealed' | 'finished'
+      currentSoup: {
+        title: string
+        description: string
+      } | null
+      currentRound: {
+        id: string
+      } | null
+      questions: Array<{
+        id: string
+        roomId: string
+        askerUserId: string
+        askerNickname: string
+        questionText: string
+        answerType: 'yes' | 'no' | 'irrelevant' | null
+        answerText: string | null
+        answeredByNickname: string | null
+        askedAt: number
+        answeredAt: number | null
+        ordinal: number
+      }>
+      gameState: 'waiting' | 'playing' | 'revealed' | 'finished'
     }) {
-      this.loading = true
+      this.currentRoomCode = snapshot.roomCode
+      this.phase = snapshot.gameState
+      this.currentRound = snapshot.currentRound ? 1 : 0
+      this.totalRounds = 1
+      this.soupTitle = snapshot.currentSoup?.title ?? '待选择题目'
+      this.prompt = snapshot.currentSoup?.description ?? '房主还没有开始本局游戏。'
+      this.questionList = snapshot.questions.map((question) => ({
+        id: question.id,
+        roomId: question.roomId,
+        senderId: question.askerUserId,
+        senderName: question.askerNickname,
+        content: question.questionText,
+        status: question.answerType ? 'answered' : 'pending',
+        createdAt: new Date(question.askedAt).toISOString(),
+        answeredAt: formatTimestamp(question.answeredAt)
+      }))
+      this.answerRecords = snapshot.questions
+        .filter((question) => question.answerType && question.answerText && question.answeredByNickname)
+        .map((question) => ({
+          id: `answer-${question.id}`,
+          roomId: question.roomId,
+          questionId: question.id,
+          responderName: question.answeredByNickname as string,
+          outcome: question.answerType as 'yes' | 'no' | 'irrelevant',
+          content: question.answerText as string,
+          createdAt: new Date(question.answeredAt as number).toISOString()
+        }))
+      this.lastEventAt = new Date().toISOString()
+    },
 
-      try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const action: GameActionRecord = {
-          id: `${payload.roomId}-${Date.now()}`,
-          roomId: payload.roomId,
-          actorId: payload.actorId,
-          actorName: payload.actorName,
-          type: payload.type ?? 'submit',
-          content: payload.content,
+    receiveSystemEvent(message: string) {
+      this.actionHistory = [
+        ...this.actionHistory,
+        {
+          id: `event-${Date.now()}`,
+          roomId: this.currentRoomCode ?? '',
+          actorId: 'system',
+          actorName: '系统',
+          type: 'system',
+          content: message,
           createdAt: new Date().toISOString()
         }
+      ]
+      this.lastEventAt = new Date().toISOString()
+    },
 
-        this.receiveGameEvent(action)
+    async startGame() {
+      this.loading = true
 
-        const socket = getSocket()
-        socket.emit('game:action', action)
+      try {
+        getSocket().emit(WS_CLIENT_EVENTS.GAME_START, {})
       } finally {
         this.loading = false
       }
     },
 
-    async submitQuestion(payload: {
-      roomId: string
-      senderId: string
-      senderName: string
-      content: string
-    }) {
+    async submitQuestion(payload: { content: string }) {
       this.loading = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const question: FormalQuestion = {
-          id: `${payload.roomId}-question-${Date.now()}`,
-          roomId: payload.roomId,
-          senderId: payload.senderId,
-          senderName: payload.senderName,
-          content: payload.content,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          answeredAt: null
-        }
-
-        this.questionList = [...this.questionList, question]
-
-        const socket = getSocket()
-        socket.emit('game:question:send', {
-          roomId: payload.roomId,
-          content: payload.content,
-          questionId: question.id,
-          createdAt: question.createdAt
+        getSocket().emit(WS_CLIENT_EVENTS.GAME_QUESTION_SEND, {
+          content: payload.content
         })
       } finally {
         this.loading = false
@@ -253,141 +181,67 @@ export const useGameStore = defineStore('game', {
     },
 
     async respondToQuestion(payload: {
-      roomId: string
       questionId: string
-      responderName: string
       outcome: AnswerRecord['outcome']
       content: string
     }) {
       this.loading = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const answeredAt = new Date().toISOString()
-        this.questionList = this.questionList.map((question) =>
-          question.id === payload.questionId
-            ? {
-                ...question,
-                status: 'answered',
-                answeredAt
-              }
-            : question
-        )
-
-        const answerRecord: AnswerRecord = {
-          id: `${payload.roomId}-answer-${Date.now()}`,
-          roomId: payload.roomId,
+        getSocket().emit(WS_CLIENT_EVENTS.GAME_ANSWER_SEND, {
           questionId: payload.questionId,
-          responderName: payload.responderName,
-          outcome: payload.outcome,
-          content: payload.content,
-          createdAt: answeredAt
-        }
-
-        this.answerRecords = [...this.answerRecords, answerRecord]
-        this.receiveGameEvent({
-          id: `${payload.roomId}-host-${Date.now()}`,
-          roomId: payload.roomId,
-          actorId: 'host',
-          actorName: payload.responderName,
-          type: 'system',
-          content: `主持人已用“${ANSWER_TYPE_LABELS[payload.outcome]}”回答问题。`,
-          createdAt: answeredAt
+          answerType: payload.outcome,
+          answerText: payload.content
         })
       } finally {
         this.loading = false
       }
     },
 
-    startRoundCountdown(seconds = 90) {
-      this.phase = 'countdown'
-      this.timerSeconds = seconds
-      this.lastEventAt = new Date().toISOString()
+    async revealAnswer() {
+      this.loading = true
+
+      try {
+        getSocket().emit(WS_CLIENT_EVENTS.GAME_REVEAL, {})
+      } finally {
+        this.loading = false
+      }
     },
 
-    settleRound() {
-      this.phase = 'settlement'
-      this.lastEventAt = new Date().toISOString()
+    async finishGame() {
+      this.loading = true
+
+      try {
+        getSocket().emit(WS_CLIENT_EVENTS.GAME_FINISH, {})
+      } finally {
+        this.loading = false
+      }
     },
 
-    advanceRound() {
-      if (this.currentRound < this.totalRounds) {
-        this.currentRound += 1
-        this.phase = 'countdown'
-        this.timerSeconds = 90
-      } else {
-        this.phase = 'finished'
+    answerTemplate(outcome: AnswerRecord['outcome']) {
+      const templates: Record<AnswerRecord['outcome'], string> = {
+        yes: `是。${ANSWER_TYPE_LABELS.yes}，这个方向很关键。`,
+        no: `否。${ANSWER_TYPE_LABELS.no}，这条线索不是核心。`,
+        irrelevant: `无关。${ANSWER_TYPE_LABELS.irrelevant}，关键点不在这里。`
       }
 
-      this.lastEventAt = new Date().toISOString()
-    },
-
-    receiveGameEvent(event: GameActionRecord) {
-      this.actionHistory = [...this.actionHistory, event]
-
-      if (event.type === 'submit') {
-        this.phase = 'playing'
-      }
-
-      this.lastEventAt = event.createdAt
-    },
-
-    attachGameSocketListeners(roomId: string) {
-      const socket = getSocket()
-
-      socket.off('game:question')
-      socket.off('game:event')
-      socket.on('game:question', (question: { roomId: string; questionId?: string; content: string; createdAt: string }) => {
-        if (question.roomId !== roomId) {
-          return
-        }
-
-        this.questionList = [
-          ...this.questionList,
-          {
-            id: question.questionId ?? `${roomId}-question-${Date.now()}`,
-            roomId,
-            senderId: 'remote-player',
-            senderName: '其他玩家',
-            content: question.content,
-            status: 'pending',
-            createdAt: question.createdAt,
-            answeredAt: null
-          }
-        ]
-      })
-      socket.on('game:event', (event: GameActionRecord) => {
-        if (event.roomId === roomId) {
-          this.receiveGameEvent(event)
-        }
-      })
-
-      this.connected = true
-    },
-
-    detachGameSocketListeners() {
-      const socket = getSocket()
-      socket.off('game:question')
-      socket.off('game:event')
-      this.connected = false
+      return templates[outcome]
     },
 
     resetState() {
-      this.detachGameSocketListeners()
-      this.currentRoomId = null
+      this.currentRoomCode = null
       this.phase = 'idle'
       this.currentRound = 0
-      this.totalRounds = 5
+      this.totalRounds = 1
       this.timerSeconds = 0
       this.soupTitle = ''
       this.prompt = ''
-      this.hostHint = ''
-      this.scoreboard = []
+      this.hostHint = '主持人只回答“是 / 否 / 无关”，避免直接说出答案。'
       this.questionList = []
       this.answerRecords = []
       this.actionHistory = []
       this.loading = false
+      this.connected = false
       this.lastEventAt = null
     }
   }

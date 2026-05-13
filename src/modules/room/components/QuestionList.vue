@@ -4,7 +4,7 @@
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-lg font-semibold text-slate-900">提问与回答</div>
-          <div class="text-sm text-slate-500">中间区域集中展示正式提问和主持人的回答记录。</div>
+          <div class="text-sm text-slate-500">中间区域集中展示正式提问与主持人的回答记录。</div>
         </div>
         <NTag size="small" type="info">{{ pendingQuestions.length }} 条待回答</NTag>
       </div>
@@ -94,8 +94,6 @@ function answerTagType(outcome: AnswerRecord['outcome']) {
       return 'success'
     case 'no':
       return 'error'
-    case 'partial':
-      return 'warning'
     default:
       return 'info'
   }

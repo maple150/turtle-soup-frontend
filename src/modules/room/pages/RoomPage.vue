@@ -8,7 +8,7 @@
       :mode="roomMode"
       :current-round="gameStore.currentRound"
       :total-rounds="gameStore.totalRounds"
-      :formatted-timer="gameStore.formattedTimer"
+      :formatted-timer="realtimeStatus"
       :online-member-count="roomStore.onlineMemberCount"
     />
 
@@ -28,7 +28,7 @@
           :phase-label="gameStore.phaseLabel"
           :current-round="gameStore.currentRound"
           :total-rounds="gameStore.totalRounds"
-          :formatted-timer="gameStore.formattedTimer"
+          :formatted-timer="realtimeStatus"
           :questions="gameStore.questionList"
           :answers="gameStore.answerRecords"
         />
@@ -41,6 +41,8 @@
         <HostControlPanel
           :can-manage-game="canManageGame"
           :can-start-game="canStartGame"
+          :can-reveal-answer="canRevealAnswer"
+          :can-finish-game="canFinishGame"
           :start-game-hint="startGameHint"
           :pending-questions="gameStore.pendingQuestions"
           :selected-question-id="selectedQuestionId"
@@ -51,9 +53,9 @@
           @update:answer-draft="answerDraft = $event"
           @submit-answer="handleSubmitAnswer"
           @fill-template="fillHostTemplate"
-          @start-round="handleStartRound"
-          @advance-round="handleAdvanceRound"
-          @settle-round="handleSettleRound"
+          @start-game="handleStartGame"
+          @reveal-answer="handleRevealAnswer"
+          @finish-game="handleFinishGame"
         />
       </div>
 
@@ -77,7 +79,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useMessage } from 'naive-ui'
+import { useRoute, useRouter } from 'vue-router'
 
 import ChatPanel from '@/modules/room/components/ChatPanel.vue'
 import HostControlPanel from '@/modules/room/components/HostControlPanel.vue'
@@ -93,6 +96,8 @@ import { useRoomStore } from '@/stores/room'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const router = useRouter()
+const message = useMessage()
 const authStore = useAuthStore()
 const userStore = useUserStore()
 const roomStore = useRoomStore()
@@ -105,24 +110,22 @@ const selectedQuestionId = ref<string | null>(null)
 const selectedOutcome = ref<AnswerRecord['outcome']>('yes')
 const answerDraft = ref('')
 
-const roomId = computed(() => String(route.params.roomId || 'alpha'))
-const roomTitle = computed(() => roomStore.currentRoom?.name ?? `房间 ${roomId.value.toUpperCase()}`)
+const roomCodeParam = computed(() => String(route.params.roomId || ''))
+const roomTitle = computed(() => roomStore.currentRoom?.name ?? `房间 ${roomCodeParam.value}`)
 const roomDescription = computed(
-  () => roomStore.currentRoom?.description ?? '这是一个用于多人实时推理的海龟汤房间。'
+  () => roomStore.currentRoom?.description ?? '这里是多人实时推理房间。'
 )
 const roomStatus = computed(() => roomStore.currentRoom?.status ?? 'waiting')
 const roomMode = computed(() => roomStore.currentRoom?.mode ?? 'casual')
 const roomMembers = computed(() => roomStore.currentRoom?.members ?? [])
 const roomCode = computed(() => roomStore.roomCode)
+const realtimeStatus = computed(() => (roomStore.connected ? '实时同步中' : '等待连接'))
 
-const currentUserId = computed(() => authStore.currentUserId ?? userStore.profile?.id ?? 'user-001')
-const currentUserName = computed(() => userStore.displayName || authStore.currentUserName || '海龟玩家')
+const currentUserId = computed(() => authStore.currentUserId ?? userStore.profile?.id ?? '')
 
 const canManageGame = computed(() =>
   roomMembers.value.some(
-    (member) =>
-      member.id === currentUserId.value &&
-      (member.role === 'host' || member.role === 'moderator')
+    (member) => member.userId === currentUserId.value && member.role === 'host'
   )
 )
 
@@ -132,6 +135,14 @@ const canStartGame = computed(
     roomStore.isInRoom &&
     roomStatus.value === 'waiting' &&
     (roomStore.connected || Boolean(roomStore.currentRoom))
+)
+
+const canRevealAnswer = computed(
+  () => canManageGame.value && ['playing'].includes(roomStatus.value)
+)
+
+const canFinishGame = computed(
+  () => canManageGame.value && ['playing', 'revealed'].includes(roomStatus.value)
 )
 
 const startGameHint = computed(() =>
@@ -155,30 +166,35 @@ watch(
 watch(
   () => route.params.roomId,
   async (value) => {
-    if (typeof value === 'string') {
-      await roomStore.joinRoom(value)
+    if (typeof value === 'string' && value) {
+      await joinCurrentRoom(value)
     }
   }
 )
 
 onMounted(async () => {
+  if (!authStore.isAuthenticated) {
+    await router.push('/login')
+    return
+  }
+
   if (!userStore.profile) {
-    userStore.hydrateCurrentUserMock('user-001', '小七')
+    await userStore.fetchCurrentUser()
   }
 
-  if (!authStore.currentUserId) {
-    authStore.applySession({
-      userId: 'user-001',
-      username: '小七',
-      tokens: {
-        accessToken: 'mock-room-access-token',
-        refreshToken: 'mock-room-refresh-token'
-      }
-    })
+  if (roomCodeParam.value) {
+    await joinCurrentRoom(roomCodeParam.value)
   }
-
-  await roomStore.joinRoom(roomId.value)
 })
+
+async function joinCurrentRoom(code: string) {
+  try {
+    await roomStore.joinRoom(code.toUpperCase())
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '加入房间失败')
+    await router.push('/lobby')
+  }
+}
 
 async function handleSubmitInput() {
   const content = messageDraft.value.trim()
@@ -187,23 +203,22 @@ async function handleSubmitInput() {
     return
   }
 
-  if (messageMode.value === 'chat') {
-    await chatStore.sendMessage({
-      roomId: roomStore.currentRoom.id,
-      senderId: currentUserId.value,
-      senderName: currentUserName.value,
-      content
-    })
-  } else {
-    await gameStore.submitQuestion({
-      roomId: roomStore.currentRoom.id,
-      senderId: currentUserId.value,
-      senderName: currentUserName.value,
-      content
-    })
-  }
+  try {
+    if (messageMode.value === 'chat') {
+      await chatStore.sendMessage({
+        roomCode: roomStore.currentRoom.roomCode,
+        content
+      })
+    } else {
+      await gameStore.submitQuestion({
+        content
+      })
+    }
 
-  messageDraft.value = ''
+    messageDraft.value = ''
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '发送失败')
+  }
 }
 
 async function handleSubmitAnswer() {
@@ -211,42 +226,49 @@ async function handleSubmitAnswer() {
     return
   }
 
-  await gameStore.respondToQuestion({
-    roomId: roomStore.currentRoom.id,
-    questionId: selectedQuestionId.value,
-    responderName: currentUserName.value,
-    outcome: selectedOutcome.value,
-    content: answerDraft.value.trim()
-  })
+  try {
+    await gameStore.respondToQuestion({
+      questionId: selectedQuestionId.value,
+      outcome: selectedOutcome.value,
+      content: answerDraft.value.trim()
+    })
 
-  selectedQuestionId.value = gameStore.pendingQuestions[0]?.id ?? null
-  answerDraft.value = ''
+    selectedQuestionId.value = gameStore.pendingQuestions[0]?.id ?? null
+    answerDraft.value = ''
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '提交回答失败')
+  }
 }
 
 function fillHostTemplate() {
-  const templateMap: Record<AnswerRecord['outcome'], string> = {
-    yes: '是，这个方向很关键，可以继续往这里推理。',
-    no: '否，这个假设和真实故事并不一致。',
-    irrelevant: '无关，关键线索不在这里。',
-    partial: '部分相关，你碰到了一点边缘线索，但还没找到核心原因。'
-  }
-
-  answerDraft.value = templateMap[selectedOutcome.value]
+  answerDraft.value = gameStore.answerTemplate(selectedOutcome.value)
 }
 
-function handleStartRound() {
+async function handleStartGame() {
   if (!canStartGame.value) {
     return
   }
 
-  gameStore.startRoundCountdown()
+  try {
+    await gameStore.startGame()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '开始游戏失败')
+  }
 }
 
-function handleAdvanceRound() {
-  gameStore.advanceRound()
+async function handleRevealAnswer() {
+  try {
+    await gameStore.revealAnswer()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '公布答案失败')
+  }
 }
 
-function handleSettleRound() {
-  gameStore.settleRound()
+async function handleFinishGame() {
+  try {
+    await gameStore.finishGame()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '结束游戏失败')
+  }
 }
 </script>

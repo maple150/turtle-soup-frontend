@@ -1,56 +1,113 @@
-import { io } from 'socket.io-client'
-
-import { createSocketEventHandlers } from './handlers'
-import {
-  CHAT_SOCKET_EVENTS,
-  GAME_SOCKET_EVENTS,
-  ROOM_SOCKET_EVENTS
-} from './events'
+import { SOCKET_CONNECTION_EVENTS, WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from './events'
 import type {
   AppSocket,
-  ChatMessagePayload,
   ClientToServerEvents,
-  GameActionPayload,
-  GameQuestionPayload,
-  RoomJoinPayload,
-  RoomLeavePayload,
+  DisconnectEventPayload,
   ServerToClientEvents,
-  SocketEventHandlerMap,
+  SocketConnectOptions,
   SocketEventName,
   SocketListener,
-  SocketManagerOptions,
-  SocketStoreBindings
+  WsEnvelope
 } from './types'
 
-class SocketManager {
-  private socket: AppSocket | null = null
-  private handlers: SocketEventHandlerMap = {}
-
-  private createSocket(options: SocketManagerOptions = {}) {
-    return io(import.meta.env.VITE_SOCKET_URL || '/', {
-      autoConnect: false,
-      reconnection: true,
-      transports: ['websocket'],
-      ...options
-    }) as AppSocket
-  }
-
-  getSocket(options: SocketManagerOptions = {}) {
-    if (!this.socket) {
-      this.socket = this.createSocket(options)
+function buildWsUrl(roomCode: string, ticket: string, websocketPath?: string) {
+  if (websocketPath) {
+    if (/^wss?:\/\//.test(websocketPath)) {
+      return websocketPath
     }
 
-    return this.socket
+    if (/^https?:\/\//.test(websocketPath)) {
+      const parsed = new URL(websocketPath)
+      parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
+      return parsed.toString()
+    }
   }
 
-  connect(options: SocketManagerOptions = {}) {
-    const socket = this.getSocket(options)
+  const base = import.meta.env.VITE_API_BASE_URL || '/api'
 
-    if (!socket.connected) {
-      socket.connect()
+  if (/^https?:\/\//.test(base)) {
+    const parsed = new URL(base)
+    parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:'
+    parsed.pathname = `/ws/rooms/${roomCode}`
+    parsed.search = `ticket=${encodeURIComponent(ticket)}`
+    return parsed.toString()
+  }
+
+  const url = new URL(window.location.origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = `/ws/rooms/${roomCode}`
+  url.search = `ticket=${encodeURIComponent(ticket)}`
+  return url.toString()
+}
+
+class SocketManager implements AppSocket {
+  private socket: WebSocket | null = null
+  private listeners = new Map<SocketEventName, Set<SocketListener>>()
+  private activeRoomCode: string | null = null
+
+  get connected() {
+    return this.socket?.readyState === WebSocket.OPEN
+  }
+
+  async connect(options: SocketConnectOptions) {
+    if (this.connected && this.activeRoomCode === options.roomCode) {
+      return
     }
 
-    return socket
+    this.disconnect()
+
+    const url = buildWsUrl(options.roomCode, options.ticket, options.websocketPath)
+
+    await new Promise<void>((resolve, reject) => {
+      const socket = new WebSocket(url)
+      this.socket = socket
+      this.activeRoomCode = options.roomCode
+
+      socket.addEventListener(
+        'open',
+        () => {
+          this.dispatch(SOCKET_CONNECTION_EVENTS.CONNECT, {
+            roomCode: options.roomCode,
+            userId: '',
+            nickname: '',
+            role: 'player'
+          })
+          this.emit(WS_CLIENT_EVENTS.HELLO, {
+            roomCode: options.roomCode
+          })
+          this.emit(WS_CLIENT_EVENTS.ROOM_SNAPSHOT_GET, {
+            reason: 'initial'
+          })
+          resolve()
+        },
+        { once: true }
+      )
+
+      socket.addEventListener('message', (event) => {
+        try {
+          const envelope = JSON.parse(String(event.data)) as WsEnvelope<keyof ServerToClientEvents>
+          this.dispatch(envelope.event, envelope.data as ServerToClientEvents[keyof ServerToClientEvents])
+        } catch {
+          this.dispatch(SOCKET_CONNECTION_EVENTS.CONNECT_ERROR, {
+            message: '无法解析实时消息'
+          })
+        }
+      })
+
+      socket.addEventListener('close', (event) => {
+        this.handleClose({
+          code: event.code,
+          reason: event.reason
+        })
+      })
+
+      socket.addEventListener('error', () => {
+        this.dispatch(SOCKET_CONNECTION_EVENTS.CONNECT_ERROR, {
+          message: '实时连接失败'
+        })
+        reject(new Error('实时连接失败'))
+      })
+    })
   }
 
   disconnect() {
@@ -58,122 +115,76 @@ class SocketManager {
       return
     }
 
-    this.unbindHandlers()
-    this.socket.disconnect()
-  }
+    const active = this.socket
+    this.socket = null
+    this.activeRoomCode = null
 
-  reconnect() {
-    const socket = this.getSocket()
-
-    this.unbindHandlers()
-
-    if (socket.connected) {
-      socket.disconnect()
-    }
-
-    socket.connect()
-
-    return socket
-  }
-
-  emit<EventName extends keyof ClientToServerEvents>(
-    event: EventName,
-    ...args: Parameters<ClientToServerEvents[EventName]>
-  ) {
-    const socket = this.getSocket()
-    ;(socket.emit as (...payload: any[]) => void)(event, ...args)
-  }
-
-  on(event: SocketEventName, handler: SocketListener) {
-    const socket = this.getSocket()
-    ;(socket.on as (eventName: string, listener: SocketListener) => AppSocket)(event, handler)
-
-    return () => {
-      this.off(event, handler)
+    if (active.readyState === WebSocket.OPEN || active.readyState === WebSocket.CONNECTING) {
+      active.close(1000, 'manual disconnect')
     }
   }
 
-  off(event: SocketEventName, handler?: SocketListener) {
-    const socket = this.getSocket()
+  emit<T extends keyof ClientToServerEvents>(event: T, payload: ClientToServerEvents[T]) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      throw new Error('实时连接未建立')
+    }
 
-    if (handler) {
-      ;(socket.off as (eventName: string, listener: SocketListener) => AppSocket)(event, handler)
+    const envelope: WsEnvelope<T, ClientToServerEvents[T]> = {
+      event,
+      data: payload,
+      ts: Date.now(),
+      reqId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    }
+
+    this.socket.send(JSON.stringify(envelope))
+  }
+
+  on<T extends keyof ServerToClientEvents>(event: T, handler: SocketListener<ServerToClientEvents[T]>) {
+    const listeners = this.listeners.get(event) ?? new Set<SocketListener>()
+    listeners.add(handler as SocketListener)
+    this.listeners.set(event, listeners)
+  }
+
+  off<T extends keyof ServerToClientEvents>(event: T, handler?: SocketListener<ServerToClientEvents[T]>) {
+    if (!handler) {
+      this.listeners.delete(event)
       return
     }
 
-    socket.removeAllListeners(event)
-  }
+    const listeners = this.listeners.get(event)
+    listeners?.delete(handler as SocketListener)
 
-  bindHandlers(bindings: SocketStoreBindings) {
-    const socket = this.getSocket()
-    const nextHandlers = createSocketEventHandlers(bindings)
-
-    this.unbindHandlers()
-
-    for (const [eventName, handler] of Object.entries(nextHandlers)) {
-      if (!handler) {
-        continue
-      }
-
-      const typedEvent = eventName as SocketEventName
-      const typedHandler = handler as SocketListener
-
-      ;(socket.on as (eventName: string, listener: SocketListener) => AppSocket)(
-        typedEvent,
-        typedHandler
-      )
-      this.handlers[typedEvent] = typedHandler
+    if (listeners && listeners.size === 0) {
+      this.listeners.delete(event)
     }
   }
 
-  unbindHandlers() {
-    if (!this.socket) {
-      this.handlers = {}
+  private dispatch(event: string, payload: unknown) {
+    const listeners = this.listeners.get(event as SocketEventName)
+
+    if (!listeners) {
       return
     }
 
-    for (const [eventName, handler] of Object.entries(this.handlers)) {
-      if (!handler) {
-        continue
-      }
-
-      ;(this.socket.off as (eventName: string, listener: SocketListener) => AppSocket)(
-        eventName,
-        handler as SocketListener
-      )
+    for (const listener of listeners) {
+      listener(payload)
     }
-
-    this.handlers = {}
   }
 
-  joinRoom(payload: RoomJoinPayload) {
-    this.emit(ROOM_SOCKET_EVENTS.JOIN, payload)
-  }
-
-  leaveRoom(payload: RoomLeavePayload) {
-    this.emit(ROOM_SOCKET_EVENTS.LEAVE, payload)
-  }
-
-  sendChatMessage(payload: ChatMessagePayload) {
-    this.emit(CHAT_SOCKET_EVENTS.SEND_MESSAGE, payload)
-  }
-
-  sendQuestion(payload: GameQuestionPayload) {
-    this.emit(GAME_SOCKET_EVENTS.SEND_QUESTION, payload)
-  }
-
-  sendGameAction(payload: GameActionPayload) {
-    this.emit(GAME_SOCKET_EVENTS.ACTION, payload)
+  private handleClose(payload: DisconnectEventPayload) {
+    this.socket = null
+    this.activeRoomCode = null
+    this.dispatch(SOCKET_CONNECTION_EVENTS.DISCONNECT, payload)
   }
 }
 
 export const socketManager = new SocketManager()
 
-export function getSocket(options: SocketManagerOptions = {}) {
-  return socketManager.getSocket(options)
+export function getSocket() {
+  return socketManager
 }
 
-export function connectSocket(options: SocketManagerOptions = {}) {
+export function connectSocket(options: SocketConnectOptions) {
   return socketManager.connect(options)
 }
 
@@ -181,16 +192,9 @@ export function disconnectSocket() {
   socketManager.disconnect()
 }
 
-export function reconnectSocket() {
-  return socketManager.reconnect()
-}
-
-export function bindSocketStoreHandlers(bindings: SocketStoreBindings) {
-  socketManager.bindHandlers(bindings)
-}
-
-export function unbindSocketStoreHandlers() {
-  socketManager.unbindHandlers()
+export function reconnectSocket(options: SocketConnectOptions) {
+  socketManager.disconnect()
+  return socketManager.connect(options)
 }
 
 export * from './events'

@@ -15,7 +15,7 @@
         v-for="message in messages"
         :key="message.id"
         class="rounded-2xl border border-slate-200 px-4 py-3"
-        :class="message.kind === 'system' ? 'bg-amber-50 border-amber-100' : 'bg-slate-50'"
+        :class="message.kind === 'system' ? 'border-amber-100 bg-amber-50' : 'bg-slate-50'"
       >
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2">

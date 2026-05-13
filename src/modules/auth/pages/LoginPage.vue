@@ -2,11 +2,11 @@
   <NCard class="rounded-[32px] border-0 shadow-soft">
     <div class="space-y-8">
       <div class="space-y-3">
-        <NTag round type="primary">登录</NTag>
+        <NTag round type="warning">登录</NTag>
         <div>
-          <h2 class="text-3xl font-semibold text-slate-900">欢迎回来</h2>
+          <h2 class="text-3xl font-semibold text-slate-900">回到房间，继续推理</h2>
           <NText depth="3" class="mt-2 block">
-            使用用户名和密码即可进入房间大厅，后续可以继续接入真实登录接口。
+            使用用户名和密码登录，进入大厅后就可以加入房间或自己开一桌。
           </NText>
         </div>
       </div>
@@ -29,10 +29,6 @@
               @keydown.enter.prevent="handleSubmit"
             />
           </NFormItem>
-          <div class="flex items-center justify-between gap-3">
-            <NCheckbox v-model:checked="rememberMe">记住我</NCheckbox>
-            <NButton text type="primary">忘记密码</NButton>
-          </div>
           <NButton type="primary" size="large" block :loading="authStore.authLoading" @click="handleSubmit">
             立即登录
           </NButton>
@@ -41,9 +37,7 @@
 
       <div class="flex items-center justify-between gap-3 rounded-3xl bg-slate-50 px-5 py-4">
         <NText depth="3">还没有账号？</NText>
-        <NButton tertiary type="primary" @click="router.push('/register')">
-          去注册
-        </NButton>
+        <NButton tertiary type="primary" @click="router.push('/register')">去注册</NButton>
       </div>
     </div>
   </NCard>
@@ -55,7 +49,6 @@ import type { FormInst, FormRules } from 'naive-ui'
 import {
   NButton,
   NCard,
-  NCheckbox,
   NForm,
   NFormItem,
   NInput,
@@ -71,7 +64,6 @@ const router = useRouter()
 const message = useMessage()
 const authStore = useAuthStore()
 const formRef = ref<FormInst | null>(null)
-const rememberMe = ref(true)
 const formValue = reactive({
   username: '',
   password: ''
@@ -97,12 +89,16 @@ const rules: FormRules = {
 async function handleSubmit() {
   await formRef.value?.validate()
 
-  await authStore.login({
-    username: formValue.username.trim(),
-    password: formValue.password
-  })
+  try {
+    await authStore.login({
+      username: formValue.username.trim(),
+      password: formValue.password
+    })
 
-  message.success(`欢迎回来，${formValue.username || '玩家'}。`)
-  await router.push('/lobby')
+    message.success('登录成功')
+    await router.push('/lobby')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '登录失败')
+  }
 }
 </script>

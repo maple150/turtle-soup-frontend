@@ -1,35 +1,31 @@
 import { defineStore } from 'pinia'
 
+import {
+  createRoom,
+  createRoomWsTicket,
+  getRoomDetail,
+  getRoomList,
+  joinRoom as joinRoomApi,
+  leaveRoom as leaveRoomApi,
+  type CreateRoomParams,
+  type RoomMember,
+  type RoomMode,
+  type RoomSnapshot,
+  type RoomStatus,
+  type RoomSummary
+} from '@/api/room'
+import { unwrapResponse } from '@/api/request'
 import { ROOM_STATUS_LABELS } from '@/constants/labels'
-import http from '@/services/http'
-import { getSocket } from '@/services/socket'
+import { connectSocket, disconnectSocket, getSocket } from '@/services/socket'
+import { SOCKET_CONNECTION_EVENTS, WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from '@/socket/events'
+import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useGameStore } from '@/stores/game'
 
-export type RoomStatus = 'waiting' | 'playing' | 'revealed' | 'finished'
-export type RoomMode = 'casual' | 'ranked' | 'private'
-
-export interface RoomMember {
-  id: string
-  nickname: string
-  role: 'host' | 'moderator' | 'player' | 'observer'
-  online: boolean
-  ready: boolean
-}
-
-export interface RoomSummary {
-  id: string
-  name: string
-  description: string
-  mode: RoomMode
-  status: RoomStatus
-  memberCount: number
-  capacity: number
-  hostName: string
-}
-
 export interface RoomDetail extends RoomSummary {
   members: RoomMember[]
+  onlineCount: number
 }
 
 interface LobbyFilters {
@@ -48,69 +44,21 @@ interface RoomState {
   lastSyncedAt: string | null
 }
 
-function createMockRooms(): RoomSummary[] {
-  return [
-    {
-      id: 'alpha',
-      name: '午夜推理局',
-      description: '适合随时开局的休闲房间，人数少也可以先开始。',
-      mode: 'casual',
-      status: 'waiting',
-      memberCount: 4,
-      capacity: 8,
-      hostName: '小七'
-    },
-    {
-      id: 'bravo',
-      name: '竞技排位房',
-      description: '正在进行中的多人对战房间。',
-      mode: 'ranked',
-      status: 'playing',
-      memberCount: 6,
-      capacity: 6,
-      hostName: '米琪'
-    },
-    {
-      id: 'charlie',
-      name: '好友私密房',
-      description: '预留给受邀玩家加入的私密房间。',
-      mode: 'private',
-      status: 'finished',
-      memberCount: 2,
-      capacity: 5,
-      hostName: '阿澜'
-    }
-  ]
+function mapRoomSummary(room: RoomSummary): RoomSummary {
+  return room
 }
 
-function createFallbackRoomSummary(roomId: string): RoomSummary {
+function mapSnapshot(snapshot: RoomSnapshot): RoomDetail {
   return {
-    id: roomId,
-    name: `房间 ${roomId.toUpperCase()}`,
-    description: '这是一个等待后端房间详情同步的占位房间。',
-    mode: 'casual',
-    status: 'waiting',
-    memberCount: 1,
-    capacity: 8,
-    hostName: '小七'
-  }
-}
-
-function createMockRoomDetail(summary: RoomSummary): RoomDetail {
-  return {
-    ...summary,
-    members: [
-      { id: 'user-001', nickname: summary.hostName, role: 'host', online: true, ready: true },
-      { id: 'user-002', nickname: '阿澜', role: 'moderator', online: true, ready: true },
-      { id: 'user-003', nickname: '米琪', role: 'player', online: true, ready: false },
-      { id: 'user-004', nickname: '诺拉', role: 'observer', online: true, ready: false }
-    ]
+    ...snapshot,
+    members: snapshot.members,
+    onlineCount: snapshot.onlineCount
   }
 }
 
 export const useRoomStore = defineStore('room', {
   state: (): RoomState => ({
-    rooms: createMockRooms(),
+    rooms: [],
     currentRoom: null,
     lobbyFilters: {
       keyword: '',
@@ -128,21 +76,18 @@ export const useRoomStore = defineStore('room', {
     isInRoom: (state) => Boolean(state.currentRoom),
     filteredRooms: (state) =>
       state.rooms.filter((room) => {
-        const byKeyword =
-          state.lobbyFilters.keyword === '' ||
-          room.name.toLowerCase().includes(state.lobbyFilters.keyword.toLowerCase())
-        const byMode =
-          state.lobbyFilters.mode === 'all' || room.mode === state.lobbyFilters.mode
-        const byStatus =
+        const matchesKeyword =
+          !state.lobbyFilters.keyword ||
+          room.name.toLowerCase().includes(state.lobbyFilters.keyword.toLowerCase()) ||
+          room.roomCode.toLowerCase().includes(state.lobbyFilters.keyword.toLowerCase())
+        const matchesMode = state.lobbyFilters.mode === 'all' || room.mode === state.lobbyFilters.mode
+        const matchesStatus =
           state.lobbyFilters.status === 'all' || room.status === state.lobbyFilters.status
 
-        return byKeyword && byMode && byStatus
+        return matchesKeyword && matchesMode && matchesStatus
       }),
-    onlineMemberCount: (state) =>
-      state.currentRoom?.members.filter((member) => member.online).length ?? 0,
-    readyMemberCount: (state) =>
-      state.currentRoom?.members.filter((member) => member.ready).length ?? 0,
-    roomCode: (state) => state.currentRoom?.id.toUpperCase() ?? '--',
+    onlineMemberCount: (state) => state.currentRoom?.onlineCount ?? 0,
+    roomCode: (state) => state.currentRoom?.roomCode ?? '--',
     roomStatusLabel: (state) =>
       state.currentRoom ? ROOM_STATUS_LABELS[state.currentRoom.status] : '未知状态'
   },
@@ -159,51 +104,54 @@ export const useRoomStore = defineStore('room', {
       this.loading = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-        this.rooms = createMockRooms()
+        const result = unwrapResponse(
+          await getRoomList({
+            page: 1,
+            pageSize: 50,
+            keyword: this.lobbyFilters.keyword || undefined,
+            mode: this.lobbyFilters.mode === 'all' ? undefined : this.lobbyFilters.mode,
+            status: this.lobbyFilters.status === 'all' ? undefined : this.lobbyFilters.status
+          })
+        )
+
+        this.rooms = result.list.map(mapRoomSummary)
         this.lastSyncedAt = new Date().toISOString()
       } finally {
         this.loading = false
       }
     },
 
-    async createRoom(payload: { name: string; description: string; mode: RoomMode; capacity: number }) {
+    async createRoom(payload: CreateRoomParams) {
       this.joining = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const newRoom: RoomSummary = {
-          id: `room-${Date.now()}`,
-          name: payload.name,
-          description: payload.description,
-          mode: payload.mode,
-          status: 'waiting',
-          memberCount: 1,
-          capacity: payload.capacity,
-          hostName: '你'
-        }
-
-        this.rooms = [newRoom, ...this.rooms]
-        await this.joinRoom(newRoom.id)
+        const room = unwrapResponse(await createRoom(payload))
+        await this.fetchRooms()
+        await this.joinRoom(room.roomCode)
+        return room
       } finally {
         this.joining = false
       }
     },
 
-    async joinRoom(roomId: string) {
+    async fetchRoomDetail(roomCode: string) {
+      const room = unwrapResponse(await getRoomDetail(roomCode))
+
+      this.currentRoom = {
+        ...room,
+        members: this.currentRoom?.roomCode === room.roomCode ? this.currentRoom.members : [],
+        onlineCount: this.currentRoom?.roomCode === room.roomCode ? this.currentRoom.onlineCount : 0
+      }
+      this.lastSyncedAt = new Date().toISOString()
+    },
+
+    async joinRoom(roomCode: string) {
       this.joining = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const summary = this.rooms.find((room) => room.id === roomId) ?? createFallbackRoomSummary(roomId)
-        this.currentRoom = createMockRoomDetail(summary)
-        this.lastSyncedAt = new Date().toISOString()
-
-        await useGameStore().initializeForRoom(this.currentRoom.id)
-        await useChatStore().initializeRoomChannel(this.currentRoom.id)
-        this.attachRoomSocketListeners(this.currentRoom.id)
+        await joinRoomApi(roomCode)
+        await this.fetchRoomDetail(roomCode)
+        await this.connectRoomSocket(roomCode)
       } finally {
         this.joining = false
       }
@@ -214,43 +162,136 @@ export const useRoomStore = defineStore('room', {
         return
       }
 
-      const roomId = this.currentRoom.id
+      const leavingCode = this.currentRoom.roomCode
 
-      await Promise.resolve(http.defaults.baseURL)
-      useGameStore().resetState()
-      useChatStore().closeRoomChannel(roomId)
-      this.detachRoomSocketListeners()
-      this.currentRoom = null
-      this.lastSyncedAt = new Date().toISOString()
+      try {
+        await leaveRoomApi(leavingCode)
+      } finally {
+        disconnectSocket()
+        useChatStore().closeRoomChannel(leavingCode)
+        useGameStore().resetState()
+        this.currentRoom = null
+        this.connected = false
+        this.lastSyncedAt = new Date().toISOString()
+      }
     },
 
-    syncRoomSnapshot(snapshot: RoomDetail) {
-      this.currentRoom = snapshot
+    syncRoomSnapshot(snapshot: RoomSnapshot) {
+      this.currentRoom = mapSnapshot(snapshot)
+      this.connected = true
       this.lastSyncedAt = new Date().toISOString()
+
+      useChatStore().syncMessages(snapshot.roomCode, snapshot.chatMessages)
+      useChatStore().initializeRoomChannel(snapshot.roomCode)
+      useGameStore().initializeForRoom(snapshot.roomCode)
+      useGameStore().applyRoomSnapshot(snapshot)
     },
 
-    attachRoomSocketListeners(roomId: string) {
+    async connectRoomSocket(roomCode: string) {
+      const appStore = useAppStore()
+      const authStore = useAuthStore()
+      const chatStore = useChatStore()
+      const gameStore = useGameStore()
       const socket = getSocket()
 
-      socket.off('room:update')
-      socket.on('room:update', (snapshot: RoomDetail) => {
-        if (snapshot.id === roomId) {
-          this.syncRoomSnapshot(snapshot)
+      const ticket = unwrapResponse(await createRoomWsTicket(roomCode))
+
+      socket.off(SOCKET_CONNECTION_EVENTS.CONNECT)
+      socket.off(SOCKET_CONNECTION_EVENTS.DISCONNECT)
+      socket.off(SOCKET_CONNECTION_EVENTS.CONNECT_ERROR)
+      socket.off(WS_SERVER_EVENTS.ROOM_SNAPSHOT)
+      socket.off(WS_SERVER_EVENTS.ROOM_STATE_UPDATED)
+      socket.off(WS_SERVER_EVENTS.CHAT_MESSAGE)
+      socket.off(WS_SERVER_EVENTS.GAME_QUESTION_CREATED)
+      socket.off(WS_SERVER_EVENTS.GAME_ANSWER_CREATED)
+      socket.off(WS_SERVER_EVENTS.GAME_REVEALED)
+      socket.off(WS_SERVER_EVENTS.GAME_FINISHED)
+      socket.off(WS_SERVER_EVENTS.ERROR)
+      socket.off(WS_SERVER_EVENTS.ACK)
+
+      socket.on(SOCKET_CONNECTION_EVENTS.CONNECT, () => {
+        this.connected = true
+        appStore.setSocketStatus('connected')
+      })
+
+      socket.on(SOCKET_CONNECTION_EVENTS.DISCONNECT, () => {
+        this.connected = false
+        appStore.setSocketStatus('disconnected')
+      })
+
+      socket.on(SOCKET_CONNECTION_EVENTS.CONNECT_ERROR, (payload) => {
+        this.connected = false
+        appStore.setSocketStatus('error')
+        appStore.pushNotification({
+          type: 'error',
+          title: '实时连接失败',
+          description: payload.message
+        })
+      })
+
+      socket.on(WS_SERVER_EVENTS.ROOM_SNAPSHOT, (payload) => {
+        this.syncRoomSnapshot(payload)
+      })
+
+      socket.on(WS_SERVER_EVENTS.ROOM_STATE_UPDATED, () => {
+        try {
+          socket.emit(WS_CLIENT_EVENTS.ROOM_SNAPSHOT_GET, {
+            reason: 'manual'
+          })
+        } catch {
+          // Ignore transient snapshot refresh failures.
         }
       })
 
-      this.connected = true
-    },
+      socket.on(WS_SERVER_EVENTS.CHAT_MESSAGE, (payload) => {
+        chatStore.receiveMessage(roomCode, payload)
+      })
 
-    detachRoomSocketListeners() {
-      const socket = getSocket()
-      socket.off('room:update')
-      this.connected = false
+      socket.on(WS_SERVER_EVENTS.GAME_QUESTION_CREATED, () => {
+        gameStore.receiveSystemEvent('收到新的正式提问。')
+      })
+
+      socket.on(WS_SERVER_EVENTS.GAME_ANSWER_CREATED, () => {
+        gameStore.receiveSystemEvent('主持人已回答问题。')
+      })
+
+      socket.on(WS_SERVER_EVENTS.GAME_REVEALED, () => {
+        gameStore.receiveSystemEvent('房主已公布答案。')
+      })
+
+      socket.on(WS_SERVER_EVENTS.GAME_FINISHED, () => {
+        gameStore.receiveSystemEvent('本局游戏已结束。')
+      })
+
+      socket.on(WS_SERVER_EVENTS.ERROR, (payload) => {
+        appStore.pushNotification({
+          type: 'error',
+          title: '房间操作失败',
+          description: payload.message
+        })
+      })
+
+      socket.on(WS_SERVER_EVENTS.ACK, (payload) => {
+        if (payload.message === 'connected' && authStore.currentUserName) {
+          appStore.pushNotification({
+            type: 'success',
+            title: '已进入房间',
+            description: `欢迎来到 ${this.currentRoom?.name ?? roomCode}。`
+          })
+        }
+      })
+
+      appStore.setSocketStatus('connecting')
+      await connectSocket({
+        roomCode,
+        ticket: ticket.ticket,
+        websocketPath: ticket.websocketPath
+      })
     },
 
     resetState() {
-      this.detachRoomSocketListeners()
-      this.rooms = createMockRooms()
+      disconnectSocket()
+      this.rooms = []
       this.currentRoom = null
       this.lobbyFilters = {
         keyword: '',
@@ -259,6 +300,7 @@ export const useRoomStore = defineStore('room', {
       }
       this.loading = false
       this.joining = false
+      this.connected = false
       this.lastSyncedAt = null
     }
   }

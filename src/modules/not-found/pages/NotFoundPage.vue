@@ -6,7 +6,7 @@
         <div>
           <h1 class="text-5xl font-semibold text-slate-900">页面不存在</h1>
           <NText depth="3" class="mt-3 block text-base">
-            当前页面不存在或路由尚未接入。你可以先返回首页，或者去房间大厅继续浏览。
+            你访问的页面不存在，可以回到首页，或者先去房间大厅看看有没有正在进行的推理局。
           </NText>
         </div>
         <div class="flex flex-wrap justify-center gap-3">

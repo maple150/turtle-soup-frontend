@@ -4,9 +4,9 @@
       <div class="space-y-3">
         <NTag round type="success">注册</NTag>
         <div>
-          <h2 class="text-3xl font-semibold text-slate-900">创建账号</h2>
+          <h2 class="text-3xl font-semibold text-slate-900">先领一个座位</h2>
           <NText depth="3" class="mt-2 block">
-            注册只需要用户名和密码，确认密码仅在前端做校验，不会提交给后端。
+            注册只需要用户名和密码。确认密码只在前端校验，不会提交给后端。
           </NText>
         </div>
       </div>
@@ -49,9 +49,7 @@
 
       <div class="flex items-center justify-between gap-3 rounded-3xl bg-slate-50 px-5 py-4">
         <NText depth="3">已经有账号了？</NText>
-        <NButton tertiary type="primary" @click="router.push('/login')">
-          去登录
-        </NButton>
+        <NButton tertiary type="primary" @click="router.push('/login')">去登录</NButton>
       </div>
     </div>
   </NCard>
@@ -117,18 +115,22 @@ const rules: FormRules = {
 
 async function handleSubmit() {
   if (!agreed.value) {
-    message.warning('请先同意平台规则。')
+    message.warning('请先同意平台规则')
     return
   }
 
   await formRef.value?.validate()
 
-  await authStore.register({
-    username: formValue.username.trim(),
-    password: formValue.password
-  })
+  try {
+    await authStore.register({
+      username: formValue.username.trim(),
+      password: formValue.password
+    })
 
-  message.success('注册成功，请使用新账号登录。')
-  await router.push('/login')
+    message.success('注册成功，请使用新账号登录')
+    await router.push('/login')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '注册失败')
+  }
 }
 </script>

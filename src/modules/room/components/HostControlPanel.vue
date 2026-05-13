@@ -4,7 +4,7 @@
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-lg font-semibold text-slate-900">主持人操作区</div>
-          <div class="text-sm text-slate-500">房主或主持人可以在这里开始游戏、推进回合并回答正式提问。</div>
+          <div class="text-sm text-slate-500">房主可以在这里开始游戏、回答提问、公布答案和结束本局。</div>
         </div>
         <NTag :type="canManageGame ? 'error' : 'default'" size="small">
           {{ canManageGame ? '可操作' : '只读模式' }}
@@ -18,11 +18,11 @@
       </NAlert>
 
       <div class="grid gap-4 md:grid-cols-3">
-        <NButton type="primary" :disabled="!canStartGame" @click="$emit('start-round')">
+        <NButton type="primary" :disabled="!canStartGame" @click="$emit('start-game')">
           开始游戏
         </NButton>
-        <NButton :disabled="!canManageGame" @click="$emit('advance-round')">下一回合</NButton>
-        <NButton :disabled="!canManageGame" @click="$emit('settle-round')">结束当前回合</NButton>
+        <NButton :disabled="!canRevealAnswer" @click="$emit('reveal-answer')">公布答案</NButton>
+        <NButton :disabled="!canFinishGame" @click="$emit('finish-game')">结束游戏</NButton>
       </div>
 
       <div class="grid gap-5 lg:grid-cols-[1fr_220px]">
@@ -71,6 +71,8 @@ import type { AnswerRecord, FormalQuestion } from '@/stores/game'
 const props = defineProps<{
   canManageGame: boolean
   canStartGame: boolean
+  canRevealAnswer: boolean
+  canFinishGame: boolean
   startGameHint?: string
   pendingQuestions: FormalQuestion[]
   selectedQuestionId: string | null
@@ -84,9 +86,9 @@ const emit = defineEmits<{
   (event: 'update:answer-draft', value: string): void
   (event: 'submit-answer'): void
   (event: 'fill-template'): void
-  (event: 'start-round'): void
-  (event: 'advance-round'): void
-  (event: 'settle-round'): void
+  (event: 'start-game'): void
+  (event: 'reveal-answer'): void
+  (event: 'finish-game'): void
 }>()
 
 const questionOptions = computed(() =>
@@ -99,8 +101,7 @@ const questionOptions = computed(() =>
 const outcomeOptions = [
   { label: ANSWER_TYPE_LABELS.yes, value: 'yes' },
   { label: ANSWER_TYPE_LABELS.no, value: 'no' },
-  { label: ANSWER_TYPE_LABELS.irrelevant, value: 'irrelevant' },
-  { label: ANSWER_TYPE_LABELS.partial, value: 'partial' }
+  { label: ANSWER_TYPE_LABELS.irrelevant, value: 'irrelevant' }
 ]
 
 const canSubmit = computed(

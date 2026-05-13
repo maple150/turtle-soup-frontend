@@ -5,7 +5,7 @@
         <div class="flex flex-wrap items-center gap-3">
           <NTag round type="info">房间 {{ roomCode }}</NTag>
           <NTag :type="statusTagType" size="small">{{ statusLabel }}</NTag>
-          <NTag size="small" type="warning">第 {{ currentRound }}/{{ totalRounds }} 回合</NTag>
+          <NTag size="small" type="warning">在线 {{ onlineMemberCount }} 人</NTag>
         </div>
         <div>
           <h1 class="text-3xl font-semibold tracking-tight text-slate-900">{{ title }}</h1>
@@ -21,12 +21,12 @@
           <div class="mt-2 text-base font-semibold text-slate-900">{{ modeLabel }}</div>
         </div>
         <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.18em] text-slate-400">计时</div>
-          <div class="mt-2 text-base font-semibold text-slate-900">{{ formattedTimer }}</div>
+          <div class="text-xs uppercase tracking-[0.18em] text-slate-400">回合</div>
+          <div class="mt-2 text-base font-semibold text-slate-900">{{ currentRoundLabel }}</div>
         </div>
         <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.18em] text-slate-400">在线人数</div>
-          <div class="mt-2 text-base font-semibold text-slate-900">{{ onlineMemberCount }}</div>
+          <div class="text-xs uppercase tracking-[0.18em] text-slate-400">同步状态</div>
+          <div class="mt-2 text-base font-semibold text-slate-900">{{ formattedTimer }}</div>
         </div>
       </div>
     </div>
@@ -38,7 +38,7 @@ import { computed } from 'vue'
 import { NCard, NTag, NText } from 'naive-ui'
 
 import { ROOM_MODE_LABELS, ROOM_STATUS_LABELS } from '@/constants/labels'
-import type { RoomMode, RoomStatus } from '@/stores/room'
+import type { RoomMode, RoomStatus } from '@/api/room'
 
 const props = defineProps<{
   roomCode: string
@@ -54,6 +54,9 @@ const props = defineProps<{
 
 const statusLabel = computed(() => ROOM_STATUS_LABELS[props.status])
 const modeLabel = computed(() => ROOM_MODE_LABELS[props.mode])
+const currentRoundLabel = computed(() =>
+  props.currentRound > 0 ? `第 ${props.currentRound} 回合` : '尚未开始'
+)
 
 const statusTagType = computed(() => {
   switch (props.status) {

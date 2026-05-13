@@ -13,9 +13,12 @@ declare module 'axios' {
 }
 
 export interface ApiResponse<T> {
-  code: number
+  success: boolean
+  code: string
   message: string
-  data: T
+  data?: T
+  error?: unknown
+  ts: number
 }
 
 export interface PaginationParams {
@@ -49,7 +52,7 @@ export function configureRequest(options: {
   unauthorizedHandler = options.onUnauthorized ?? null
 }
 
-const request: AxiosInstance = axios.create({
+export const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: Number(import.meta.env.VITE_API_TIMEOUT || 10000)
 })
@@ -85,5 +88,13 @@ request.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export function unwrapResponse<T>(response: AxiosResponse<ApiResponse<T>>) {
+  if (!response.data.success || response.data.data === undefined) {
+    throw new Error(response.data.message || '请求失败')
+  }
+
+  return response.data.data
+}
 
 export default request

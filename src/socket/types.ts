@@ -1,165 +1,191 @@
-import type { ManagerOptions, Socket, SocketOptions } from 'socket.io-client'
+import { SOCKET_CONNECTION_EVENTS, WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from './events'
 
-import {
-  CHAT_SOCKET_EVENTS,
-  GAME_SOCKET_EVENTS,
-  ROOM_SOCKET_EVENTS,
-  SOCKET_CONNECTION_EVENTS
-} from './events'
-
-export type SocketConnectionStatus =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected'
-  | 'error'
-
-export interface RoomJoinPayload {
-  roomId: string
-  userId?: string
+export interface WsEnvelope<TEvent extends string = string, TData = unknown> {
+  event: TEvent
+  data: TData
+  ts: number
+  reqId?: string
 }
 
-export interface RoomLeavePayload {
-  roomId: string
-  userId?: string
+export interface SocketConnectOptions {
+  roomCode: string
+  ticket: string
+  websocketPath?: string
 }
 
-export interface RoomMemberPayload {
-  id: string
-  nickname: string
-  role: 'host' | 'moderator' | 'player' | 'observer'
-  online: boolean
-  ready: boolean
-}
-
-export interface RoomSnapshotPayload {
-  id: string
-  name: string
-  description: string
-  mode: 'casual' | 'ranked' | 'private'
-  status: 'waiting' | 'playing' | 'revealed' | 'finished'
-  memberCount: number
-  capacity: number
-  hostName: string
-  members: RoomMemberPayload[]
-}
-
-export interface RoomJoinedPayload {
-  roomId: string
-  snapshot: RoomSnapshotPayload
-}
-
-export interface RoomLeftPayload {
-  roomId: string
-  userId?: string
-}
-
-export interface ChatMessagePayload {
-  id: string
-  roomId: string
-  senderId: string
-  senderName: string
-  content: string
-  kind: 'system' | 'player'
-  createdAt: string
-}
-
-export interface ChatHistoryPayload {
-  roomId: string
-  messages: ChatMessagePayload[]
-}
-
-export interface GameQuestionPayload {
-  roomId: string
-  questionId?: string
-  content: string
-  createdAt: string
-}
-
-export interface GameActionPayload {
-  id: string
-  roomId: string
-  actorId: string
-  actorName: string
-  type: 'submit' | 'skip' | 'system'
-  content: string
-  createdAt: string
-}
-
-export interface GameScorePayload {
+export interface ConnectEventPayload {
+  roomCode: string
   userId: string
   nickname: string
-  score: number
+  role: 'host' | 'player' | 'spectator'
 }
 
-export interface GameSnapshotPayload {
-  roomId: string
-  phase: 'idle' | 'waiting' | 'countdown' | 'playing' | 'settlement' | 'finished'
-  currentRound: number
-  totalRounds: number
-  timerSeconds: number
-  prompt: string
-  scoreboard: GameScorePayload[]
-  actionHistory: GameActionPayload[]
+export interface DisconnectEventPayload {
+  code?: number
+  reason?: string
 }
 
 export interface SocketErrorPayload {
   message: string
-  code?: string
+  reqId?: string
+}
+
+export interface WsRoomMemberPayload {
+  userId: string
+  nickname: string
+  role: 'host' | 'player' | 'spectator'
+  online: boolean
+  connectedAt: number
+  lastSeenAt: number
+}
+
+export interface WsChatMessagePayload {
+  id: string
+  roomId: string
+  senderUserId: string
+  senderNickname: string
+  content: string
+  kind: 'chat' | 'system'
+  createdAt: number
+}
+
+export interface WsQuestionPayload {
+  id: string
+  roomId: string
+  roundId: string
+  askerUserId: string
+  askerNickname: string
+  questionText: string
+  answerType: 'yes' | 'no' | 'irrelevant' | null
+  answerText: string | null
+  answeredByUserId: string | null
+  answeredByNickname: string | null
+  askedAt: number
+  answeredAt: number | null
+  ordinal: number
+}
+
+export interface WsRoomSnapshotPayload {
+  id: string
+  roomCode: string
+  name: string
+  description: string
+  mode: 'casual' | 'ranked' | 'private'
+  status: 'waiting' | 'playing' | 'revealed' | 'finished'
+  hostUserId: string
+  hostNickname: string
+  capacity: number
+  createdAt: number
+  updatedAt: number
+  settings: {
+    allowSpectators: boolean
+    isPrivate: boolean
+    maxQuestionsPerRound: number
+  }
+  members: WsRoomMemberPayload[]
+  onlineCount: number
+  currentSoup: {
+    id: string
+    title: string
+    subtitle: string | null
+    description: string
+    difficulty: 'easy' | 'medium' | 'hard'
+    answer?: string | null
+  } | null
+  currentRound: {
+    id: string
+    roomId: string
+    soupId: string | null
+    hostUserId: string
+    state: 'waiting' | 'playing' | 'revealed' | 'finished'
+    startedAt: number
+    endedAt: number | null
+    answerRevealed: boolean
+  } | null
+  questions: WsQuestionPayload[]
+  chatMessages: WsChatMessagePayload[]
+  gameState: 'waiting' | 'playing' | 'revealed' | 'finished'
+}
+
+export interface WsGameStateUpdatedPayload {
+  gameState: 'waiting' | 'playing' | 'revealed' | 'finished'
+  currentRound: WsRoomSnapshotPayload['currentRound']
+  currentSoup: WsRoomSnapshotPayload['currentSoup']
+}
+
+export interface WsGameRevealPayload {
+  currentRound: WsRoomSnapshotPayload['currentRound']
+  currentSoup: WsRoomSnapshotPayload['currentSoup']
 }
 
 export interface ClientToServerEvents {
-  [ROOM_SOCKET_EVENTS.JOIN]: (payload: RoomJoinPayload) => void
-  [ROOM_SOCKET_EVENTS.LEAVE]: (payload: RoomLeavePayload) => void
-  [CHAT_SOCKET_EVENTS.SEND_MESSAGE]: (payload: ChatMessagePayload) => void
-  [GAME_SOCKET_EVENTS.SEND_QUESTION]: (payload: GameQuestionPayload) => void
-  [GAME_SOCKET_EVENTS.ACTION]: (payload: GameActionPayload) => void
+  [WS_CLIENT_EVENTS.HELLO]: { roomCode: string }
+  [WS_CLIENT_EVENTS.PING]: { at?: number }
+  [WS_CLIENT_EVENTS.ROOM_SNAPSHOT_GET]: { reason?: 'initial' | 'reconnect' | 'manual' }
+  [WS_CLIENT_EVENTS.CHAT_SEND]: { content: string }
+  [WS_CLIENT_EVENTS.GAME_START]: Record<string, never>
+  [WS_CLIENT_EVENTS.GAME_QUESTION_SEND]: { content: string }
+  [WS_CLIENT_EVENTS.GAME_ANSWER_SEND]: {
+    questionId: string
+    answerType: 'yes' | 'no' | 'irrelevant'
+    answerText: string
+  }
+  [WS_CLIENT_EVENTS.GAME_REVEAL]: Record<string, never>
+  [WS_CLIENT_EVENTS.GAME_FINISH]: Record<string, never>
 }
 
 export interface ServerToClientEvents {
-  [SOCKET_CONNECTION_EVENTS.CONNECT]: () => void
-  [SOCKET_CONNECTION_EVENTS.DISCONNECT]: (reason: string) => void
-  [SOCKET_CONNECTION_EVENTS.CONNECT_ERROR]: (error: Error) => void
-  [SOCKET_CONNECTION_EVENTS.RECONNECT]: (attempt: number) => void
-  [ROOM_SOCKET_EVENTS.JOINED]: (payload: RoomJoinedPayload) => void
-  [ROOM_SOCKET_EVENTS.LEFT]: (payload: RoomLeftPayload) => void
-  [ROOM_SOCKET_EVENTS.UPDATED]: (payload: RoomSnapshotPayload) => void
-  [ROOM_SOCKET_EVENTS.MEMBER_UPDATED]: (payload: RoomMemberPayload & { roomId: string }) => void
-  [CHAT_SOCKET_EVENTS.MESSAGE]: (payload: ChatMessagePayload) => void
-  [CHAT_SOCKET_EVENTS.HISTORY]: (payload: ChatHistoryPayload) => void
-  [GAME_SOCKET_EVENTS.QUESTION]: (payload: GameQuestionPayload) => void
-  [GAME_SOCKET_EVENTS.EVENT]: (payload: GameActionPayload) => void
-  [GAME_SOCKET_EVENTS.SNAPSHOT]: (payload: GameSnapshotPayload) => void
-}
-
-export type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>
-export type SocketManagerOptions = Partial<ManagerOptions & SocketOptions>
-
-export interface SocketStoreBindings {
-  app?: {
-    onConnecting?: () => void
-    onConnected?: () => void
-    onDisconnected?: (reason: string) => void
-    onReconnect?: (attempt: number) => void
-    onError?: (error: Error) => void
+  [SOCKET_CONNECTION_EVENTS.CONNECT]: ConnectEventPayload
+  [SOCKET_CONNECTION_EVENTS.DISCONNECT]: DisconnectEventPayload
+  [SOCKET_CONNECTION_EVENTS.CONNECT_ERROR]: SocketErrorPayload
+  [WS_SERVER_EVENTS.CONNECTED]: ConnectEventPayload
+  [WS_SERVER_EVENTS.PONG]: { ok: true }
+  [WS_SERVER_EVENTS.ACK]: { message: string }
+  [WS_SERVER_EVENTS.ERROR]: SocketErrorPayload
+  [WS_SERVER_EVENTS.ROOM_SNAPSHOT]: WsRoomSnapshotPayload
+  [WS_SERVER_EVENTS.ROOM_MEMBER_JOINED]: {
+    roomCode: string
+    member?: WsRoomMemberPayload
   }
-  room?: {
-    onRoomJoined?: (payload: RoomJoinedPayload) => void
-    onRoomLeft?: (payload: RoomLeftPayload) => void
-    onRoomUpdated?: (payload: RoomSnapshotPayload) => void
-    onRoomMemberUpdated?: (payload: RoomMemberPayload & { roomId: string }) => void
+  [WS_SERVER_EVENTS.ROOM_MEMBER_LEFT]: {
+    roomCode: string
+    userId: string
   }
-  game?: {
-    onGameSnapshot?: (payload: GameSnapshotPayload) => void
-    onGameEvent?: (payload: GameActionPayload) => void
-    onQuestionReceived?: (payload: GameQuestionPayload) => void
+  [WS_SERVER_EVENTS.ROOM_STATE_UPDATED]: {
+    roomCode: string
+    status: 'waiting' | 'playing' | 'revealed' | 'finished'
+    gameState: 'waiting' | 'playing' | 'revealed' | 'finished'
+    onlineCount: number
+    updatedAt: number
   }
-  chat?: {
-    onChatMessage?: (payload: ChatMessagePayload) => void
-    onChatHistory?: (payload: ChatHistoryPayload) => void
+  [WS_SERVER_EVENTS.CHAT_MESSAGE]: WsChatMessagePayload
+  [WS_SERVER_EVENTS.GAME_STATE_UPDATED]: WsGameStateUpdatedPayload
+  [WS_SERVER_EVENTS.GAME_QUESTION_CREATED]: WsQuestionPayload
+  [WS_SERVER_EVENTS.GAME_ANSWER_CREATED]: WsQuestionPayload
+  [WS_SERVER_EVENTS.GAME_REVEALED]: WsGameRevealPayload
+  [WS_SERVER_EVENTS.GAME_FINISHED]: {
+    roomCode: string
+    currentRound: WsRoomSnapshotPayload['currentRound']
   }
 }
 
 export type SocketEventName = keyof ServerToClientEvents
-export type SocketListener = (...args: any[]) => void
+export type SocketListener<T = unknown> = (payload: T) => void
 export type SocketEventHandlerMap = Partial<Record<SocketEventName, SocketListener>>
+
+export interface AppSocket {
+  readonly connected: boolean
+  connect: (options: SocketConnectOptions) => Promise<void>
+  disconnect: () => void
+  emit: <T extends keyof ClientToServerEvents>(event: T, payload: ClientToServerEvents[T]) => void
+  on: <T extends keyof ServerToClientEvents>(event: T, handler: SocketListener<ServerToClientEvents[T]>) => void
+  off: <T extends keyof ServerToClientEvents>(event: T, handler?: SocketListener<ServerToClientEvents[T]>) => void
+}
+
+export interface SocketStoreBindings {
+  app?: {
+    onConnected?: () => void
+    onDisconnected?: (payload: DisconnectEventPayload) => void
+    onError?: (payload: SocketErrorPayload) => void
+  }
+}

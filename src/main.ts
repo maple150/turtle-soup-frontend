@@ -38,4 +38,10 @@ configureRequest({
 
 app.use(pinia)
 app.use(router)
-app.mount('#app')
+
+async function bootstrap() {
+  await useAuthStore(pinia).restoreSession()
+  app.mount('#app')
+}
+
+void bootstrap()

@@ -17,7 +17,7 @@
           <div class="text-xs uppercase tracking-[0.18em] text-slate-400">当前状态</div>
           <div class="mt-2 flex items-center gap-2">
             <NTag size="small" :type="statusTagType">{{ statusLabel }}</NTag>
-            <span class="text-sm text-slate-500">{{ readyCount }}/{{ members.length }} 已准备</span>
+            <span class="text-sm text-slate-500">{{ onlineCount }}/{{ members.length }} 在线</span>
           </div>
         </div>
       </div>
@@ -31,24 +31,25 @@
         <NSpace vertical :size="12" class="mt-4">
           <div
             v-for="member in members"
-            :key="member.id"
+            :key="member.userId"
             class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
           >
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="flex items-center gap-2">
                   <div class="truncate font-semibold text-slate-900">{{ member.nickname }}</div>
-                  <NTag v-if="member.role === 'host'" size="tiny" type="error">{{ ROOM_ROLE_LABELS.host }}</NTag>
-                  <NTag v-else-if="member.role === 'observer'" size="tiny">{{ ROOM_ROLE_LABELS.observer }}</NTag>
+                  <NTag size="tiny" :type="member.role === 'host' ? 'error' : 'default'">
+                    {{ ROOM_ROLE_LABELS[member.role] }}
+                  </NTag>
                 </div>
                 <div class="mt-1 text-sm text-slate-500">
                   {{ member.online ? '在线' : '离线' }}
                 </div>
               </div>
 
-              <NTag size="small" :type="member.ready ? 'success' : 'warning'">
-                {{ member.ready ? '已准备' : '未准备' }}
-              </NTag>
+              <div class="text-xs text-slate-400">
+                {{ formatTime(member.lastSeenAt) }}
+              </div>
             </div>
           </div>
         </NSpace>
@@ -62,7 +63,7 @@ import { computed } from 'vue'
 import { NCard, NSpace, NTag } from 'naive-ui'
 
 import { ROOM_ROLE_LABELS, ROOM_STATUS_LABELS } from '@/constants/labels'
-import type { RoomMember, RoomStatus } from '@/stores/room'
+import type { RoomMember, RoomStatus } from '@/api/room'
 
 const props = defineProps<{
   roomCode: string
@@ -71,7 +72,6 @@ const props = defineProps<{
 }>()
 
 const onlineCount = computed(() => props.members.filter((member) => member.online).length)
-const readyCount = computed(() => props.members.filter((member) => member.ready).length)
 const statusLabel = computed(() => ROOM_STATUS_LABELS[props.status])
 
 const statusTagType = computed(() => {
@@ -86,4 +86,11 @@ const statusTagType = computed(() => {
       return 'warning'
   }
 })
+
+function formatTime(value: number) {
+  return new Date(value).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
 </script>

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 
-import http from '@/services/http'
+import { WS_CLIENT_EVENTS } from '@/socket/events'
 import { getSocket } from '@/services/socket'
 
 export interface ChatMessage {
@@ -14,7 +14,7 @@ export interface ChatMessage {
 }
 
 interface ChatState {
-  activeRoomId: string | null
+  activeRoomCode: string | null
   messageMap: Record<string, ChatMessage[]>
   draftMap: Record<string, string>
   unreadMap: Record<string, number>
@@ -23,32 +23,29 @@ interface ChatState {
   lastMessageAt: string | null
 }
 
-function createMockMessages(roomId: string): ChatMessage[] {
-  return [
-    {
-      id: `${roomId}-msg-1`,
-      roomId,
-      senderId: 'system',
-      senderName: '系统',
-      content: '房间频道已初始化，聊天记录已准备就绪。',
-      kind: 'system',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: `${roomId}-msg-2`,
-      roomId,
-      senderId: 'user-002',
-      senderName: '阿澜',
-      content: '等房主开始这一局。',
-      kind: 'player',
-      createdAt: new Date().toISOString()
-    }
-  ]
+function toChatMessage(payload: {
+  id: string
+  roomId: string
+  senderUserId: string
+  senderNickname: string
+  content: string
+  kind: 'chat' | 'system'
+  createdAt: number
+}): ChatMessage {
+  return {
+    id: payload.id,
+    roomId: payload.roomId,
+    senderId: payload.senderUserId,
+    senderName: payload.senderNickname,
+    content: payload.content,
+    kind: payload.kind === 'system' ? 'system' : 'player',
+    createdAt: new Date(payload.createdAt).toISOString()
+  }
 }
 
 export const useChatStore = defineStore('chat', {
   state: (): ChatState => ({
-    activeRoomId: null,
+    activeRoomCode: null,
     messageMap: {},
     draftMap: {},
     unreadMap: {},
@@ -59,122 +56,101 @@ export const useChatStore = defineStore('chat', {
 
   getters: {
     activeMessages: (state) =>
-      state.activeRoomId ? state.messageMap[state.activeRoomId] ?? [] : [],
-    activeDraft: (state) => (state.activeRoomId ? state.draftMap[state.activeRoomId] ?? '' : ''),
-    activeUnread: (state) => (state.activeRoomId ? state.unreadMap[state.activeRoomId] ?? 0 : 0),
-    hasActiveMessages: (state) =>
-      state.activeRoomId ? (state.messageMap[state.activeRoomId] ?? []).length > 0 : false
+      state.activeRoomCode ? state.messageMap[state.activeRoomCode] ?? [] : [],
+    activeDraft: (state) => (state.activeRoomCode ? state.draftMap[state.activeRoomCode] ?? '' : '')
   },
 
   actions: {
-    setActiveRoom(roomId: string | null) {
-      this.activeRoomId = roomId
+    setActiveRoom(roomCode: string | null) {
+      this.activeRoomCode = roomCode
     },
 
-    async initializeRoomChannel(roomId: string) {
-      this.setActiveRoom(roomId)
-      await this.loadRoomMessages(roomId)
-      this.attachChatSocketListeners(roomId)
-      this.markRoomRead(roomId)
+    initializeRoomChannel(roomCode: string) {
+      this.setActiveRoom(roomCode)
+      this.markRoomRead(roomCode)
+      this.connected = true
     },
 
-    async loadRoomMessages(roomId: string) {
-      await Promise.resolve(http.defaults.baseURL)
-
+    syncMessages(roomCode: string, messages: Array<{
+      id: string
+      roomId: string
+      senderUserId: string
+      senderNickname: string
+      content: string
+      kind: 'chat' | 'system'
+      createdAt: number
+    }>) {
       this.messageMap = {
         ...this.messageMap,
-        [roomId]: createMockMessages(roomId)
+        [roomCode]: messages.map(toChatMessage)
       }
       this.lastMessageAt = new Date().toISOString()
     },
 
-    setDraft(roomId: string, draft: string) {
+    setDraft(roomCode: string, draft: string) {
       this.draftMap = {
         ...this.draftMap,
-        [roomId]: draft
+        [roomCode]: draft
       }
     },
 
-    async sendMessage(payload: { roomId: string; senderId: string; senderName: string; content: string }) {
+    async sendMessage(payload: { roomCode: string; content: string }) {
       this.sending = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        const message: ChatMessage = {
-          id: `${payload.roomId}-${Date.now()}`,
-          roomId: payload.roomId,
-          senderId: payload.senderId,
-          senderName: payload.senderName,
-          content: payload.content,
-          kind: 'player',
-          createdAt: new Date().toISOString()
-        }
-
-        this.receiveMessage(message)
-        this.setDraft(payload.roomId, '')
-
-        const socket = getSocket()
-        socket.emit('chat:send', message)
+        getSocket().emit(WS_CLIENT_EVENTS.CHAT_SEND, {
+          content: payload.content
+        })
+        this.setDraft(payload.roomCode, '')
       } finally {
         this.sending = false
       }
     },
 
-    receiveMessage(message: ChatMessage) {
-      const nextMessages = [...(this.messageMap[message.roomId] ?? []), message]
+    receiveMessage(roomCode: string, message: {
+      id: string
+      roomId: string
+      senderUserId: string
+      senderNickname: string
+      content: string
+      kind: 'chat' | 'system'
+      createdAt: number
+    }) {
+      const nextMessage = toChatMessage(message)
+      const nextMessages = [...(this.messageMap[roomCode] ?? []), nextMessage]
 
       this.messageMap = {
         ...this.messageMap,
-        [message.roomId]: nextMessages
+        [roomCode]: nextMessages
       }
 
-      if (this.activeRoomId !== message.roomId) {
+      if (this.activeRoomCode !== roomCode) {
         this.unreadMap = {
           ...this.unreadMap,
-          [message.roomId]: (this.unreadMap[message.roomId] ?? 0) + 1
+          [roomCode]: (this.unreadMap[roomCode] ?? 0) + 1
         }
       }
 
-      this.lastMessageAt = message.createdAt
+      this.lastMessageAt = nextMessage.createdAt
     },
 
-    markRoomRead(roomId: string) {
+    markRoomRead(roomCode: string) {
       this.unreadMap = {
         ...this.unreadMap,
-        [roomId]: 0
+        [roomCode]: 0
       }
     },
 
-    attachChatSocketListeners(roomId: string) {
-      const socket = getSocket()
+    closeRoomChannel(roomCode: string) {
+      if (this.activeRoomCode === roomCode) {
+        this.activeRoomCode = null
+      }
 
-      socket.off('chat:message')
-      socket.on('chat:message', (message: ChatMessage) => {
-        if (message.roomId === roomId) {
-          this.receiveMessage(message)
-        }
-      })
-
-      this.connected = true
-    },
-
-    detachChatSocketListeners() {
-      const socket = getSocket()
-      socket.off('chat:message')
       this.connected = false
     },
 
-    closeRoomChannel(roomId: string) {
-      this.detachChatSocketListeners()
-
-      if (this.activeRoomId === roomId) {
-        this.activeRoomId = null
-      }
-    },
-
     resetState() {
-      this.activeRoomId = null
+      this.activeRoomCode = null
       this.messageMap = {}
       this.draftMap = {}
       this.unreadMap = {}

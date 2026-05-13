@@ -1,13 +1,15 @@
 import { defineStore } from 'pinia'
 
-import { APP_TITLE } from '@/constants/labels'
-import http from '@/services/http'
-import { getSocket } from '@/services/socket'
+import { login, logout, refreshToken, register } from '@/api/auth'
+import { unwrapResponse } from '@/api/request'
+import { disconnectSocket } from '@/services/socket'
 import { useAppStore } from '@/stores/app'
 import { useChatStore } from '@/stores/chat'
 import { useGameStore } from '@/stores/game'
 import { useRoomStore } from '@/stores/room'
 import { useUserStore } from '@/stores/user'
+
+const AUTH_STORAGE_KEY = 'tavern-auth-session'
 
 export interface AuthTokens {
   accessToken: string
@@ -22,17 +24,38 @@ interface AuthState {
   isAuthenticated: boolean
   authLoading: boolean
   initialized: boolean
-  socketConnected: boolean
-  lastLoginAt: string | null
 }
 
-function createMockTokens(): AuthTokens {
-  const timestamp = Date.now()
+function readStoredSession(): Partial<AuthState> | null {
+  const raw = localStorage.getItem(AUTH_STORAGE_KEY)
 
-  return {
-    accessToken: `mock-access-token-${timestamp}`,
-    refreshToken: `mock-refresh-token-${timestamp}`
+  if (!raw) {
+    return null
   }
+
+  try {
+    return JSON.parse(raw) as Partial<AuthState>
+  } catch {
+    localStorage.removeItem(AUTH_STORAGE_KEY)
+    return null
+  }
+}
+
+function persistSession(state: AuthState) {
+  localStorage.setItem(
+    AUTH_STORAGE_KEY,
+    JSON.stringify({
+      accessToken: state.accessToken,
+      refreshToken: state.refreshToken,
+      currentUserId: state.currentUserId,
+      currentUserName: state.currentUserName,
+      isAuthenticated: state.isAuthenticated
+    })
+  )
+}
+
+function clearStoredSession() {
+  localStorage.removeItem(AUTH_STORAGE_KEY)
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -43,21 +66,11 @@ export const useAuthStore = defineStore('auth', {
     currentUserName: '',
     isAuthenticated: false,
     authLoading: false,
-    initialized: false,
-    socketConnected: false,
-    lastLoginAt: null
+    initialized: false
   }),
 
   getters: {
-    hasSession: (state) => state.isAuthenticated && Boolean(state.accessToken),
-    bearerToken: (state) => (state.accessToken ? `Bearer ${state.accessToken}` : ''),
-    currentSessionUser: (state) =>
-      state.currentUserId
-        ? {
-            id: state.currentUserId,
-            name: state.currentUserName
-          }
-        : null
+    hasSession: (state) => state.isAuthenticated && Boolean(state.accessToken)
   },
 
   actions: {
@@ -72,7 +85,7 @@ export const useAuthStore = defineStore('auth', {
       this.currentUserName = payload.username
       this.isAuthenticated = true
       this.initialized = true
-      this.lastLoginAt = new Date().toISOString()
+      persistSession(this.$state)
     },
 
     clearSession() {
@@ -81,24 +94,45 @@ export const useAuthStore = defineStore('auth', {
       this.currentUserId = null
       this.currentUserName = ''
       this.isAuthenticated = false
-      this.socketConnected = false
-      this.lastLoginAt = null
+      this.initialized = true
+      clearStoredSession()
     },
 
     async restoreSession() {
       this.authLoading = true
+      const userStore = useUserStore()
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
+        const saved = readStoredSession()
 
-        const tokens = createMockTokens()
-        this.applySession({
-          userId: 'user-001',
-          username: '海龟玩家',
-          tokens
-        })
+        if (!saved?.refreshToken) {
+          this.initialized = true
+          return
+        }
 
-        useUserStore().hydrateCurrentUserMock('user-001', '海龟玩家')
+        this.accessToken = saved.accessToken ?? ''
+        this.refreshToken = saved.refreshToken
+        this.currentUserId = saved.currentUserId ?? null
+        this.currentUserName = saved.currentUserName ?? ''
+        this.isAuthenticated = Boolean(saved.refreshToken)
+
+        if (!this.accessToken) {
+          const refreshed = unwrapResponse(await refreshToken({ refreshToken: this.refreshToken }))
+          this.accessToken = refreshed.accessToken
+          this.refreshToken = refreshed.refreshToken
+        }
+
+        await userStore.fetchCurrentUser()
+
+        if (userStore.profile) {
+          this.currentUserId = userStore.profile.id
+          this.currentUserName = userStore.profile.nickname || userStore.profile.username
+          this.isAuthenticated = true
+          persistSession(this.$state)
+        }
+      } catch {
+        this.clearSession()
+        userStore.clearProfile()
       } finally {
         this.initialized = true
         this.authLoading = false
@@ -107,22 +141,32 @@ export const useAuthStore = defineStore('auth', {
 
     async login(payload: { username: string; password: string }) {
       this.authLoading = true
+      const appStore = useAppStore()
+      const userStore = useUserStore()
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
+        const result = unwrapResponse(await login(payload))
 
-        const tokens = createMockTokens()
         this.applySession({
-          userId: 'user-001',
-          username: payload.username || '海龟玩家',
-          tokens
+          userId: result.userId,
+          username: payload.username.trim(),
+          tokens: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken
+          }
         })
 
-        useUserStore().hydrateCurrentUserMock('user-001', payload.username || '海龟玩家')
-        useAppStore().pushNotification({
+        await userStore.fetchCurrentUser()
+
+        if (userStore.profile) {
+          this.currentUserName = userStore.profile.nickname || userStore.profile.username
+          persistSession(this.$state)
+        }
+
+        appStore.pushNotification({
           type: 'success',
           title: '登录成功',
-          description: `已进入 ${APP_TITLE}。当前仍是模拟登录流程，后续可替换为真实接口。`
+          description: '欢迎来到酒馆。'
         })
       } finally {
         this.authLoading = false
@@ -133,78 +177,36 @@ export const useAuthStore = defineStore('auth', {
       this.authLoading = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
-        useAppStore().pushNotification({
-          type: 'success',
-          title: '注册成功',
-          description: `账号 ${payload.username} 已创建，现在可以继续登录。`
-        })
+        await register(payload)
       } finally {
         this.authLoading = false
       }
     },
 
-    connectRealtime() {
-      const appStore = useAppStore()
-      const socket = getSocket()
-
-      appStore.setSocketStatus('connecting')
-
-      socket.off('connect')
-      socket.off('disconnect')
-
-      socket.on('connect', () => {
-        this.socketConnected = true
-        appStore.setSocketStatus('connected')
-      })
-
-      socket.on('disconnect', () => {
-        this.socketConnected = false
-        appStore.setSocketStatus('disconnected')
-      })
-
-      if (!socket.connected) {
-        socket.connect()
-      }
-    },
-
     disconnectRealtime() {
-      const appStore = useAppStore()
-      const socket = getSocket()
-
-      socket.off('connect')
-      socket.off('disconnect')
-
-      if (socket.connected) {
-        socket.disconnect()
-      }
-
-      this.socketConnected = false
-      appStore.setSocketStatus('disconnected')
+      disconnectSocket()
+      useAppStore().setSocketStatus('disconnected')
     },
 
     async logout() {
       this.authLoading = true
 
       try {
-        await Promise.resolve(http.defaults.baseURL)
-
+        if (this.accessToken) {
+          await logout({
+            refreshToken: this.refreshToken || undefined
+          })
+        }
+      } catch {
+        // Ignore logout request failures and clear local state anyway.
+      } finally {
         this.disconnectRealtime()
         useRoomStore().resetState()
         useGameStore().resetState()
         useChatStore().resetState()
         useUserStore().clearProfile()
         this.clearSession()
-
-        useAppStore().pushNotification({
-          type: 'info',
-          title: '已退出登录',
-          description: '会话状态和房间相关数据已重置。'
-        })
-      } finally {
         this.authLoading = false
-        this.initialized = true
       }
     }
   }

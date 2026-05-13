@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NButton, NInput, NRadioButton, NRadioGroup, NCard } from 'naive-ui'
+import { NButton, NCard, NInput, NRadioButton, NRadioGroup } from 'naive-ui'
 
 const props = defineProps<{
   modelValue: string
