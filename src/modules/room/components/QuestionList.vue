@@ -1,16 +1,19 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
-    <div class="grid gap-4">
+  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+    <div class="grid gap-3">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-lg font-semibold text-slate-900">提问记录</div>
-          <div class="text-sm text-slate-500">左侧只保留正式提问和 AI 回答，便于快速回看。</div>
+          <div class="text-base font-semibold text-slate-900">提问记录</div>
+          <div class="text-sm text-slate-500">只保留正式提问与 AI 回答，便于快速回看。</div>
         </div>
         <NTag size="small" type="info">{{ questions.length }} 条</NTag>
       </div>
 
       <div class="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div class="max-h-[520px] min-h-[420px] space-y-3 overflow-y-auto pr-1">
+        <div
+          ref="listRef"
+          class="max-h-[500px] min-h-[380px] space-y-3 overflow-y-auto pr-1"
+        >
         <div
           v-for="question in questions"
           :key="question.id"
@@ -64,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NCard, NEmpty, NTag } from 'naive-ui'
 
 import { ANSWER_TYPE_LABELS, QUESTION_STATUS_LABELS } from '@/constants/labels'
@@ -75,11 +78,31 @@ const props = defineProps<{
   answers: AnswerRecord[]
 }>()
 
+const listRef = ref<HTMLElement | null>(null)
+
 const answerByQuestionId = computed(() =>
   props.answers.reduce<Record<string, AnswerRecord>>((acc, answer) => {
     acc[answer.questionId] = answer
     return acc
   }, {})
+)
+
+const activityCursor = computed(() =>
+  props.questions
+    .map((question) => `${question.id}:${question.answeredAt ?? 'pending'}`)
+    .join('|')
+)
+
+watch(
+  activityCursor,
+  async () => {
+    await nextTick()
+
+    if (listRef.value) {
+      listRef.value.scrollTop = listRef.value.scrollHeight
+    }
+  },
+  { immediate: true }
 )
 
 function answerTagType(outcome: AnswerRecord['outcome']) {

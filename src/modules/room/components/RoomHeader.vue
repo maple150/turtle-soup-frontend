@@ -1,7 +1,7 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '10px 14px' }">
-    <div class="grid gap-2.5">
-      <div class="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
+  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '8px 12px' }">
+    <div class="grid gap-2">
+      <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0 space-y-1">
           <div class="flex flex-wrap items-center gap-2">
             <NTag round type="info" size="small">房间 {{ roomCode }}</NTag>
@@ -9,7 +9,7 @@
             <NTag size="small" type="warning">{{ modeLabel }}</NTag>
           </div>
           <div class="flex flex-wrap items-end gap-x-3 gap-y-1">
-            <h1 class="text-lg font-semibold tracking-tight text-slate-900 lg:text-xl">{{ title }}</h1>
+            <h1 class="text-base font-semibold tracking-tight text-slate-900 lg:text-lg">{{ title }}</h1>
             <NText depth="3" class="text-sm leading-5">
               {{ description }}
             </NText>
@@ -17,22 +17,22 @@
         </div>
 
         <div class="grid shrink-0 gap-1.5 sm:grid-cols-3 lg:w-[264px]">
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1">
             <div class="text-[11px] uppercase tracking-[0.18em] text-slate-400">房主</div>
             <div class="mt-0.5 text-sm font-semibold text-slate-900">{{ hostNickname }}</div>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1">
             <div class="text-[11px] uppercase tracking-[0.18em] text-slate-400">人数</div>
             <div class="mt-0.5 text-sm font-semibold text-slate-900">{{ onlineMemberCount }}/{{ capacity }}</div>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1">
             <div class="text-[11px] uppercase tracking-[0.18em] text-slate-400">状态</div>
             <div class="mt-0.5 text-sm font-semibold text-slate-900">{{ formattedTimer }}</div>
           </div>
         </div>
       </div>
 
-      <div class="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex flex-col gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5 lg:flex-row lg:items-center lg:justify-between">
         <div class="flex items-center gap-3">
           <div class="text-sm font-semibold text-slate-900">当前成员</div>
           <div class="text-xs text-slate-500">{{ members.length }} 人在线</div>
@@ -42,7 +42,7 @@
           <div
             v-for="member in members"
             :key="member.userId"
-            class="flex min-w-[118px] items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1"
+            class="flex min-w-[112px] items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-0.5"
           >
             <div class="min-w-0">
               <div class="truncate text-sm font-semibold text-slate-900">{{ member.nickname }}</div>

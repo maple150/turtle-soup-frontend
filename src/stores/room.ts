@@ -206,6 +206,7 @@ export const useRoomStore = defineStore('room', {
       socket.off(WS_SERVER_EVENTS.GAME_ANSWER_CREATED)
       socket.off(WS_SERVER_EVENTS.GAME_REVEALED)
       socket.off(WS_SERVER_EVENTS.GAME_FINISHED)
+      socket.off(WS_SERVER_EVENTS.GAME_STATE_UPDATED)
       socket.off(WS_SERVER_EVENTS.ERROR)
       socket.off(WS_SERVER_EVENTS.ACK)
 
@@ -247,12 +248,16 @@ export const useRoomStore = defineStore('room', {
         chatStore.receiveMessage(roomCode, payload)
       })
 
-      socket.on(WS_SERVER_EVENTS.GAME_QUESTION_CREATED, () => {
-        gameStore.receiveSystemEvent('收到新的正式提问。')
+      socket.on(WS_SERVER_EVENTS.GAME_QUESTION_CREATED, (payload) => {
+        gameStore.receiveQuestion(payload)
       })
 
-      socket.on(WS_SERVER_EVENTS.GAME_ANSWER_CREATED, () => {
-        gameStore.receiveSystemEvent('AI 主持人已回答问题。')
+      socket.on(WS_SERVER_EVENTS.GAME_ANSWER_CREATED, (payload) => {
+        gameStore.receiveAnswer(payload)
+      })
+
+      socket.on(WS_SERVER_EVENTS.GAME_STATE_UPDATED, (payload) => {
+        gameStore.applyRealtimeGameState(payload)
       })
 
       socket.on(WS_SERVER_EVENTS.GAME_REVEALED, () => {

@@ -1,9 +1,9 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
-    <div class="grid gap-3">
+  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+    <div class="grid gap-2.5">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <div class="text-base font-semibold text-slate-900">输入区</div>
+          <div class="text-sm font-semibold text-slate-900">输入区</div>
           <div class="text-sm text-slate-500">
             普通聊天和正式提问分开输入。AI 会自动处理正式提问。
           </div>
@@ -24,16 +24,16 @@
         {{ startGameHint }}
       </NAlert>
 
-      <div class="grid gap-3 md:grid-cols-[1fr_132px]">
+      <div class="grid items-stretch gap-3 md:grid-cols-[1fr_132px]">
         <NInput
           :value="modelValue"
           type="textarea"
-          :autosize="{ minRows: 3, maxRows: 5 }"
+          :autosize="{ minRows: 2, maxRows: 4 }"
           :placeholder="placeholder"
           @update:value="handleInput"
         />
 
-        <div class="flex flex-col gap-3">
+        <div class="flex h-full flex-col gap-2.5">
           <NButton type="primary" :disabled="disabled" @click="$emit('submit')">
             {{ mode === 'chat' ? '发送聊天' : '发送提问' }}
           </NButton>

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { ANSWER_TYPE_LABELS, GAME_PHASE_LABELS } from '@/constants/labels'
+import type { WsGameStateUpdatedPayload, WsQuestionPayload } from '@/socket/types'
 import { WS_CLIENT_EVENTS } from '@/socket/events'
 import { getSocket } from '@/services/socket'
 
@@ -72,6 +73,35 @@ function normalizeSoupPrompt(value?: string | null) {
   }
 
   return value
+}
+
+function mapQuestionPayload(question: WsQuestionPayload): FormalQuestion {
+  return {
+    id: question.id,
+    roomId: question.roomId,
+    senderId: question.askerUserId,
+    senderName: question.askerNickname,
+    content: question.questionText,
+    status: question.answerType ? 'answered' : 'pending',
+    createdAt: new Date(question.askedAt).toISOString(),
+    answeredAt: formatTimestamp(question.answeredAt)
+  }
+}
+
+function mapAnswerPayload(question: WsQuestionPayload): AnswerRecord | null {
+  if (!question.answerType || !question.answerText || !question.answeredByNickname || !question.answeredAt) {
+    return null
+  }
+
+  return {
+    id: `answer-${question.id}`,
+    roomId: question.roomId,
+    questionId: question.id,
+    responderName: question.answeredByNickname,
+    outcome: question.answerType,
+    content: question.answerText,
+    createdAt: new Date(question.answeredAt).toISOString()
+  }
 }
 
 export const useGameStore = defineStore('game', {
@@ -171,6 +201,47 @@ export const useGameStore = defineStore('game', {
           createdAt: new Date().toISOString()
         }
       ]
+      this.lastEventAt = new Date().toISOString()
+    },
+
+    receiveQuestion(question: WsQuestionPayload) {
+      const nextQuestion = mapQuestionPayload(question)
+      const exists = this.questionList.some((item) => item.id === nextQuestion.id)
+
+      if (exists) {
+        this.questionList = this.questionList.map((item) => (item.id === nextQuestion.id ? nextQuestion : item))
+      } else {
+        this.questionList = [...this.questionList, nextQuestion]
+      }
+
+      this.questionList.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      this.lastEventAt = new Date().toISOString()
+    },
+
+    receiveAnswer(question: WsQuestionPayload) {
+      const nextQuestion = mapQuestionPayload(question)
+      const nextAnswer = mapAnswerPayload(question)
+
+      this.questionList = this.questionList.some((item) => item.id === nextQuestion.id)
+        ? this.questionList.map((item) => (item.id === nextQuestion.id ? nextQuestion : item))
+        : [...this.questionList, nextQuestion]
+
+      if (nextAnswer) {
+        this.answerRecords = this.answerRecords.some((item) => item.questionId === nextAnswer.questionId)
+          ? this.answerRecords.map((item) => (item.questionId === nextAnswer.questionId ? nextAnswer : item))
+          : [...this.answerRecords, nextAnswer]
+      }
+
+      this.answerRecords.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      this.lastEventAt = new Date().toISOString()
+    },
+
+    applyRealtimeGameState(payload: WsGameStateUpdatedPayload) {
+      this.phase = payload.gameState
+      this.currentRound = payload.currentRound ? 1 : 0
+      this.totalRounds = 1
+      this.soupTitle = normalizeSoupTitle(payload.currentSoup?.title)
+      this.prompt = normalizeSoupPrompt(payload.currentSoup?.description ?? this.prompt || '房主还没有开始本局游戏。')
       this.lastEventAt = new Date().toISOString()
     },
 

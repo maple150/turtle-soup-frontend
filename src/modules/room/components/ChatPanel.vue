@@ -1,10 +1,10 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
-    <div class="grid gap-4">
+  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+    <div class="grid gap-3">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-lg font-semibold text-slate-900">聊天区</div>
-          <div class="text-sm text-slate-500">普通聊天独立展示，列表会自动滚动到最新消息。</div>
+          <div class="text-base font-semibold text-slate-900">聊天区</div>
+          <div class="text-sm text-slate-500">这里只显示普通聊天与必要系统消息，列表会自动跟到最新。</div>
         </div>
         <NTag size="small" type="info">{{ visibleMessages.length }} 条</NTag>
       </div>
@@ -12,7 +12,7 @@
       <div class="rounded-2xl border border-slate-200 bg-slate-50 p-2">
         <div
           ref="listRef"
-          class="max-h-[520px] min-h-[420px] space-y-3 overflow-y-auto pr-1"
+          class="max-h-[500px] min-h-[380px] space-y-3 overflow-y-auto pr-1"
         >
           <div
             v-for="message in visibleMessages"
@@ -63,6 +63,10 @@ let timer: number | null = null
 
 const visibleMessages = computed(() =>
   props.messages.filter((message) => {
+    if (isQaRelatedSystemMessage(message)) {
+      return false
+    }
+
     if (!isTransientRoomActivityMessage(message)) {
       return true
     }
@@ -101,6 +105,14 @@ function isTransientRoomActivityMessage(message: ChatMessage) {
   }
 
   return /加入了房间|离开了房间|joined the room|left the room/i.test(message.content)
+}
+
+function isQaRelatedSystemMessage(message: ChatMessage) {
+  if (message.kind !== 'system') {
+    return false
+  }
+
+  return /已回答问题|回答了问题|answered question/i.test(message.content)
 }
 
 function messageOpacityClass(message: ChatMessage) {
