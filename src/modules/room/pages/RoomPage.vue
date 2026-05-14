@@ -1,5 +1,5 @@
 <template>
-  <section class="grid gap-4 xl:h-[calc(100vh-160px)] xl:min-h-0 xl:overflow-hidden xl:grid-rows-[auto_minmax(0,1fr)]">
+  <section class="grid gap-3">
     <RoomHeader
       :room-code="roomCode"
       :title="roomTitle"
@@ -13,14 +13,14 @@
       :members="roomMembers"
     />
 
-    <div class="grid gap-4 xl:min-h-0 xl:overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)_300px]">
+    <div class="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
       <QuestionList
         :questions="gameStore.questionList"
         :answers="gameStore.answerRecords"
-        class="xl:min-h-0"
+        class="xl:max-h-[calc(100vh-360px)]"
       />
 
-      <div class="grid gap-4 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)_auto]">
+      <div class="grid gap-4">
         <SoupPanel
           :soup-title="gameStore.soupTitle"
           :prompt="gameStore.prompt"
@@ -31,7 +31,6 @@
           :formatted-timer="realtimeStatus"
           :questions="gameStore.questionList"
           :answers="gameStore.answerRecords"
-          class="xl:min-h-0"
         />
 
         <MessageInput
@@ -52,7 +51,7 @@
 
       <ChatPanel
         :messages="chatStore.activeMessages"
-        class="xl:min-h-0"
+        class="xl:max-h-[calc(100vh-360px)]"
       />
     </div>
   </section>
