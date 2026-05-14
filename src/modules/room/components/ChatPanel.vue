@@ -1,19 +1,18 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft">
-    <template #header>
+  <NCard class="h-full rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
+    <div class="grid h-full min-h-0 gap-4 xl:grid-rows-[auto_minmax(0,1fr)]">
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-lg font-semibold text-slate-900">聊天区</div>
-          <div class="text-sm text-slate-500">右侧用于普通聊天，最新消息会自动跟进到底部。</div>
+          <div class="text-sm text-slate-500">普通聊天独立展示，列表会自动滚动到最新消息。</div>
         </div>
-        <NTag size="small" type="info">{{ messages.length }} 条消息</NTag>
+        <NTag size="small" type="info">{{ messages.length }} 条</NTag>
       </div>
-    </template>
 
-    <div
-      ref="listRef"
-      class="grid max-h-[680px] gap-3 overflow-y-auto pr-1"
-    >
+      <div
+        ref="listRef"
+        class="min-h-0 space-y-3 overflow-y-auto pr-1"
+      >
       <div
         v-for="message in messages"
         :key="message.id"
@@ -35,6 +34,7 @@
         description="暂无聊天消息"
         class="rounded-2xl border border-dashed border-slate-200 py-10"
       />
+      </div>
     </div>
   </NCard>
 </template>

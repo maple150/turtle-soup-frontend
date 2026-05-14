@@ -38,6 +38,18 @@ export interface AdminRoom extends RoomSummary {
   status: 'waiting' | 'playing' | 'revealed' | 'finished'
 }
 
+export interface AdminSoupImportItem {
+  title: string
+  subtitle?: string
+  description: string
+  content: string
+  answer: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  tags?: string[]
+  status?: 'draft' | 'published' | 'archived'
+  isPublic?: boolean
+}
+
 export function getAdminOverview() {
   return request.get<ApiResponse<AdminOverview>>('/admin/overview')
 }
@@ -80,6 +92,13 @@ export function updateAdminSoup(
   return request.patch<ApiResponse<SoupDetail>>(`/admin/soups/${soupId}`, params)
 }
 
+export function importAdminSoups(items: AdminSoupImportItem[]) {
+  return request.post<ApiResponse<{ importedCount: number; items: Array<{ id: string; title: string }> }>>(
+    '/admin/soups/import',
+    { items }
+  )
+}
+
 export function getAdminRooms(params?: { page?: number; pageSize?: number; keyword?: string }) {
   return request.get<ApiResponse<PaginatedData<AdminRoom>>>('/admin/rooms', { params })
 }
@@ -96,10 +115,26 @@ export function updateAdminRoom(
   return request.patch<ApiResponse<RoomSummary>>(`/admin/rooms/${roomCode}`, params)
 }
 
+export function deleteAdminRoom(roomCode: string) {
+  return request.delete<ApiResponse<{ roomCode: string; deleted: true }>>(`/admin/rooms/${roomCode}`)
+}
+
 export function getAdminAiConfig() {
   return request.get<ApiResponse<AiConfig>>('/admin/ai-config')
 }
 
 export function updateAdminAiConfig(params: AiConfig) {
   return request.put<ApiResponse<AiConfig>>('/admin/ai-config', params)
+}
+
+export function testAdminAiConfig(params: AiConfig) {
+  return request.post<ApiResponse<{
+    reachable: boolean
+    model: string
+    provider: string
+    latencyMs: number
+    preview: string | null
+    statusCode?: number
+    errorMessage?: string
+  }>>('/admin/ai-config/test', params)
 }

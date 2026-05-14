@@ -1,6 +1,6 @@
 <template>
   <section class="grid gap-6">
-    <NCard class="rounded-3xl border-0 shadow-soft">
+    <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '20px 24px' }">
       <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="space-y-3">
           <NTag round type="error">管理后台</NTag>
@@ -17,22 +17,22 @@
       </div>
     </NCard>
 
-    <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-      <NCard class="rounded-3xl border-0 shadow-soft">
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
         <div class="text-sm text-slate-500">用户总数</div>
-        <div class="mt-3 text-3xl font-semibold text-slate-900">{{ overview?.totals.users ?? '--' }}</div>
+        <div class="mt-2 text-2xl font-semibold text-slate-900">{{ overview?.totals.users ?? '--' }}</div>
       </NCard>
-      <NCard class="rounded-3xl border-0 shadow-soft">
+      <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
         <div class="text-sm text-slate-500">题目总数</div>
-        <div class="mt-3 text-3xl font-semibold text-slate-900">{{ overview?.totals.soups ?? '--' }}</div>
+        <div class="mt-2 text-2xl font-semibold text-slate-900">{{ overview?.totals.soups ?? '--' }}</div>
       </NCard>
-      <NCard class="rounded-3xl border-0 shadow-soft">
+      <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
         <div class="text-sm text-slate-500">房间总数</div>
-        <div class="mt-3 text-3xl font-semibold text-slate-900">{{ overview?.totals.rooms ?? '--' }}</div>
+        <div class="mt-2 text-2xl font-semibold text-slate-900">{{ overview?.totals.rooms ?? '--' }}</div>
       </NCard>
-      <NCard class="rounded-3xl border-0 shadow-soft">
+      <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
         <div class="text-sm text-slate-500">AI 模型</div>
-        <div class="mt-3 text-xl font-semibold text-slate-900">{{ overview?.aiModel ?? '--' }}</div>
+        <div class="mt-2 text-lg font-semibold text-slate-900">{{ overview?.aiModel ?? '--' }}</div>
       </NCard>
     </div>
 
@@ -60,7 +60,28 @@
         </NTabPane>
 
         <NTabPane name="soups" tab="题库管理">
-          <div class="grid gap-4">
+          <div class="grid gap-5">
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div class="text-base font-semibold text-slate-900">导入题库</div>
+                  <div class="text-sm text-slate-500">
+                    支持直接粘贴 JSON 数组，字段包含 title、description、content、answer 等。
+                  </div>
+                </div>
+                <div class="flex gap-3">
+                  <NButton :loading="importingSoups" @click="handleImportSoups">导入题库</NButton>
+                </div>
+              </div>
+              <NInput
+                v-model:value="importDraft"
+                class="mt-4"
+                type="textarea"
+                :autosize="{ minRows: 5, maxRows: 10 }"
+                placeholder='[{"title":"示例题目","description":"题面简介","content":"完整内容","answer":"谜底","difficulty":"medium","tags":["示例"],"status":"published","isPublic":true}]'
+              />
+            </div>
+
             <div
               v-for="soup in soups"
               :key="soup.id"
@@ -87,11 +108,12 @@
               :key="room.roomCode"
               class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
             >
-              <div class="grid gap-4 lg:grid-cols-[1fr_220px_220px_auto] lg:items-end">
+              <div class="grid gap-4 lg:grid-cols-[1fr_220px_220px_auto_auto] lg:items-end">
                 <NInput v-model:value="room.name" placeholder="房间名称" />
                 <NSelect v-model:value="room.status" :options="roomStatusOptions" />
                 <NInputNumber v-model:value="room.capacity" :min="2" :max="16" />
                 <NButton type="primary" @click="saveRoom(room)">保存房间</NButton>
+                <NButton tertiary type="error" @click="handleDeleteRoom(room.roomCode)">删除房间</NButton>
               </div>
               <NInput
                 v-model:value="room.description"
@@ -125,9 +147,18 @@
               :autosize="{ minRows: 8, maxRows: 14 }"
               placeholder="AI 系统提示词"
             />
-            <div>
+            <div class="flex flex-wrap gap-3">
               <NButton type="primary" @click="saveAiConfig">保存 AI 配置</NButton>
+              <NButton secondary :loading="testingAi" @click="handleTestAiConfig">测试连通性</NButton>
             </div>
+            <NAlert v-if="aiTestResult" :type="aiTestResult.reachable ? 'success' : 'warning'">
+              <div class="space-y-1">
+                <div>{{ aiTestResult.reachable ? '连通性正常' : '连通性异常' }}</div>
+                <div class="text-sm">
+                  {{ aiTestResult.reachable ? `响应耗时 ${aiTestResult.latencyMs} ms` : aiTestResult.errorMessage || '未返回有效结果' }}
+                </div>
+              </div>
+            </NAlert>
           </div>
         </NTabPane>
       </NTabs>
@@ -138,6 +169,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import {
+  NAlert,
   NButton,
   NCard,
   NCheckbox,
@@ -151,23 +183,38 @@ import {
   useMessage
 } from 'naive-ui'
 
-import type { AiConfig, AdminOverview } from '@/api/admin'
+import type { AiConfig, AdminOverview, AdminSoupImportItem } from '@/api/admin'
 import {
+  deleteAdminRoom,
   getAdminAiConfig,
   getAdminOverview,
   getAdminRooms,
   getAdminSoups,
   getAdminUsers,
+  importAdminSoups,
   updateAdminAiConfig,
   updateAdminRoom,
   updateAdminSoup,
-  updateAdminUser
+  updateAdminUser,
+  testAdminAiConfig
 } from '@/api/admin'
 import { unwrapResponse } from '@/api/request'
 
 const message = useMessage()
 const loading = ref(false)
 const overview = ref<AdminOverview | null>(null)
+const importDraft = ref('')
+const importingSoups = ref(false)
+const testingAi = ref(false)
+const aiTestResult = ref<{
+  reachable: boolean
+  model: string
+  provider: string
+  latencyMs: number
+  preview: string | null
+  statusCode?: number
+  errorMessage?: string
+} | null>(null)
 const users = ref<Array<{
   id: string
   username: string
@@ -320,6 +367,22 @@ async function saveRoom(room: (typeof rooms.value)[number]) {
   }
 }
 
+async function handleDeleteRoom(roomCode: string) {
+  const confirmed = window.confirm(`确认删除房间 ${roomCode} 吗？此操作不可恢复。`)
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await deleteAdminRoom(roomCode)
+    message.success(`已删除房间 ${roomCode}`)
+    await reloadAll()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '删除房间失败')
+  }
+}
+
 async function saveAiConfig() {
   try {
     await updateAdminAiConfig({
@@ -328,6 +391,95 @@ async function saveAiConfig() {
     message.success('AI 配置已保存')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '保存 AI 配置失败')
+  }
+}
+
+async function handleImportSoups() {
+  if (!importDraft.value.trim()) {
+    message.warning('请先粘贴题库 JSON')
+    return
+  }
+
+  let parsed: unknown
+
+  try {
+    parsed = JSON.parse(importDraft.value)
+  } catch {
+    message.error('题库 JSON 格式不正确')
+    return
+  }
+
+  const rawItems = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : null
+
+  if (!rawItems || rawItems.length === 0) {
+    message.error('请提供至少一条题库数据')
+    return
+  }
+
+  const normalized = rawItems.map((item) => {
+    const value = item as Partial<AdminSoupImportItem> & { [key: string]: unknown }
+
+    return {
+      title: String(value.title ?? '').trim(),
+      subtitle: value.subtitle ? String(value.subtitle).trim() : undefined,
+      description: String(value.description ?? '').trim(),
+      content: String(value.content ?? '').trim(),
+      answer: String(value.answer ?? '').trim(),
+      difficulty: (['easy', 'medium', 'hard'].includes(String(value.difficulty))
+        ? String(value.difficulty)
+        : 'medium') as AdminSoupImportItem['difficulty'],
+      tags: Array.isArray(value.tags) ? value.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+      status: (['draft', 'published', 'archived'].includes(String(value.status))
+        ? String(value.status)
+        : 'published') as NonNullable<AdminSoupImportItem['status']>,
+      isPublic: typeof value.isPublic === 'boolean' ? value.isPublic : true
+    }
+  })
+
+  if (normalized.some((item) => !item.title || !item.description || !item.content || !item.answer)) {
+    message.error('题库内容不完整，请检查标题、题面、正文和答案')
+    return
+  }
+
+  importingSoups.value = true
+
+  try {
+    const result = await importAdminSoups(normalized)
+    message.success(`已导入 ${unwrapResponse(result).importedCount} 道题目`)
+    importDraft.value = ''
+    await reloadAll()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导入题库失败')
+  } finally {
+    importingSoups.value = false
+  }
+}
+
+async function handleTestAiConfig() {
+  testingAi.value = true
+
+  try {
+    const result = unwrapResponse(
+      await testAdminAiConfig({
+        ...aiConfig
+      })
+    )
+
+    aiTestResult.value = result
+
+    if (result.reachable) {
+      message.success(`AI 连通成功，耗时 ${result.latencyMs} ms`)
+    } else {
+      message.warning(result.errorMessage || 'AI 连通测试失败')
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 连通性测试失败')
+  } finally {
+    testingAi.value = false
   }
 }
 
