@@ -1,6 +1,6 @@
 <template>
-  <NCard class="h-full rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
-    <div class="grid h-full min-h-0 gap-4 xl:grid-rows-[auto_minmax(0,1fr)]">
+  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
+    <div class="grid gap-4">
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-lg font-semibold text-slate-900">提问记录</div>
@@ -9,11 +9,12 @@
         <NTag size="small" type="info">{{ questions.length }} 条</NTag>
       </div>
 
-      <div class="min-h-0 space-y-3 overflow-y-auto pr-1">
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div class="max-h-[520px] min-h-[420px] space-y-3 overflow-y-auto pr-1">
         <div
           v-for="question in questions"
           :key="question.id"
-          class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+          class="rounded-2xl border border-slate-200 bg-white px-4 py-3"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
@@ -54,8 +55,9 @@
         <NEmpty
           v-if="questions.length === 0"
           description="暂无正式提问"
-          class="rounded-2xl border border-dashed border-slate-200 py-10"
+          class="flex min-h-[396px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10"
         />
+        </div>
       </div>
     </div>
   </NCard>

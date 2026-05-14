@@ -58,6 +58,22 @@ function formatTimestamp(value: number | null) {
   return value ? new Date(value).toISOString() : null
 }
 
+function normalizeSoupTitle(value?: string | null) {
+  if (!value || value === 'Unassigned Soup') {
+    return '待选择题目'
+  }
+
+  return value
+}
+
+function normalizeSoupPrompt(value?: string | null) {
+  if (!value || value === 'Host has not assigned a soup yet.') {
+    return '房主还没有为本局选择题目。'
+  }
+
+  return value
+}
+
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
     currentRoomCode: null,
@@ -116,8 +132,8 @@ export const useGameStore = defineStore('game', {
       this.phase = snapshot.gameState
       this.currentRound = snapshot.currentRound ? 1 : 0
       this.totalRounds = 1
-      this.soupTitle = snapshot.currentSoup?.title ?? '待选择题目'
-      this.prompt = snapshot.currentSoup?.description ?? '房主还没有开始本局游戏。'
+      this.soupTitle = normalizeSoupTitle(snapshot.currentSoup?.title)
+      this.prompt = normalizeSoupPrompt(snapshot.currentSoup?.description ?? '房主还没有开始本局游戏。')
       this.questionList = snapshot.questions.map((question) => ({
         id: question.id,
         roomId: question.roomId,

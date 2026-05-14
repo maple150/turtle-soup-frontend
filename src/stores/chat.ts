@@ -23,6 +23,28 @@ interface ChatState {
   lastMessageAt: string | null
 }
 
+function normalizeSystemContent(content: string) {
+  const normalized = content.trim()
+
+  const patterns: Array<[RegExp, (matches: RegExpExecArray) => string]> = [
+    [/^(.+)\s+joined the room\.?$/i, (matches) => `${matches[1]} 加入了房间。`],
+    [/^(.+)\s+left the room\.?$/i, (matches) => `${matches[1]} 离开了房间。`],
+    [/^(.+)\s+started the game\.?$/i, (matches) => `${matches[1]} 开始了游戏。`],
+    [/^(.+)\s+revealed the answer\.?$/i, (matches) => `${matches[1]} 公布了答案。`],
+    [/^(.+)\s+ended the game\.?$/i, (matches) => `${matches[1]} 结束了本局游戏。`]
+  ]
+
+  for (const [pattern, formatter] of patterns) {
+    const matches = pattern.exec(normalized)
+
+    if (matches) {
+      return formatter(matches)
+    }
+  }
+
+  return normalized
+}
+
 function toChatMessage(payload: {
   id: string
   roomId: string
@@ -32,13 +54,15 @@ function toChatMessage(payload: {
   kind: 'chat' | 'system'
   createdAt: number
 }): ChatMessage {
+  const kind = payload.kind === 'system' ? 'system' : 'player'
+
   return {
     id: payload.id,
     roomId: payload.roomId,
     senderId: payload.senderUserId,
-    senderName: payload.senderNickname,
-    content: payload.content,
-    kind: payload.kind === 'system' ? 'system' : 'player',
+    senderName: kind === 'system' ? '系统' : payload.senderNickname,
+    content: kind === 'system' ? normalizeSystemContent(payload.content) : payload.content,
+    kind,
     createdAt: new Date(payload.createdAt).toISOString()
   }
 }

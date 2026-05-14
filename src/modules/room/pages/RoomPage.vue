@@ -17,7 +17,6 @@
       <QuestionList
         :questions="gameStore.questionList"
         :answers="gameStore.answerRecords"
-        class="xl:max-h-[calc(100vh-360px)]"
       />
 
       <div class="grid gap-4">
@@ -51,7 +50,6 @@
 
       <ChatPanel
         :messages="chatStore.activeMessages"
-        class="xl:max-h-[calc(100vh-360px)]"
       />
     </div>
   </section>
