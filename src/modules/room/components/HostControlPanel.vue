@@ -3,8 +3,8 @@
     <template #header>
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-lg font-semibold text-slate-900">主持人操作区</div>
-          <div class="text-sm text-slate-500">房主可以在这里开始游戏、回答提问、公布答案和结束本局。</div>
+          <div class="text-lg font-semibold text-slate-900">房间操作区</div>
+          <div class="text-sm text-slate-500">当前版本正式提问默认由 AI 自动回答，这里只保留房主控制项。</div>
         </div>
         <NTag :type="canManageGame ? 'error' : 'default'" size="small">
           {{ canManageGame ? '可操作' : '只读模式' }}
@@ -47,7 +47,7 @@
         :disabled="!canManageGame"
         type="textarea"
         :autosize="{ minRows: 3, maxRows: 5 }"
-        placeholder="填写主持人的正式回答"
+        placeholder="填写 AI 回答备注"
         @update:value="handleAnswerDraftChange"
       />
 

@@ -7,7 +7,8 @@ export const profileRoutes: RouteRecordRaw[] = [
     component: () => import('./pages/ProfilePage.vue'),
     meta: {
       title: '个人中心',
-      activeMenu: '/profile'
+      activeMenu: '/profile',
+      requiresAuth: true
     }
   }
 ]

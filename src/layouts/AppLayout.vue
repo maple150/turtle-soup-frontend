@@ -71,17 +71,21 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import tavernLogo from '@/assets/tavern-logo.svg'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const userStore = useUserStore()
 
 const menuOptions = computed(() =>
-  appStore.navigation.map((item) => ({
-    label: item.label,
-    key: item.key
-  }))
+  appStore.navigation
+    .filter((item) => item.key !== '/admin' || userStore.userRoles.includes('admin'))
+    .map((item) => ({
+      label: item.label,
+      key: item.key
+    }))
 )
 
 const activeKey = computed(() => {

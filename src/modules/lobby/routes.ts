@@ -16,7 +16,8 @@ export const lobbyRoutes: RouteRecordRaw[] = [
     component: () => import('./pages/CreateRoomPage.vue'),
     meta: {
       title: '创建房间',
-      activeMenu: '/lobby'
+      activeMenu: '/lobby',
+      requiresAuth: true
     }
   }
 ]

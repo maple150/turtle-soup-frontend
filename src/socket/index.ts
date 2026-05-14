@@ -23,7 +23,7 @@ function buildWsUrl(roomCode: string, ticket: string, websocketPath?: string) {
     }
   }
 
-  const base = import.meta.env.VITE_API_BASE_URL || '/api'
+  const base = import.meta.env.VITE_API_BASE_URL || ''
 
   if (/^https?:\/\//.test(base)) {
     const parsed = new URL(base)

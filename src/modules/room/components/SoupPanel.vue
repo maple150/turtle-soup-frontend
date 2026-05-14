@@ -65,7 +65,7 @@ const panels = computed(() => [
   {
     label: '回答数',
     value: String(props.answers.length),
-    caption: '主持人回答'
+    caption: 'AI 回答'
   }
 ])
 </script>

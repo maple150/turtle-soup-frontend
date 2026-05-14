@@ -6,17 +6,17 @@
       :description="roomDescription"
       :status="roomStatus"
       :mode="roomMode"
-      :current-round="gameStore.currentRound"
-      :total-rounds="gameStore.totalRounds"
+      :host-nickname="hostNickname"
+      :capacity="roomCapacity"
       :formatted-timer="realtimeStatus"
       :online-member-count="roomStore.onlineMemberCount"
+      :members="roomMembers"
     />
 
-    <div class="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-      <MemberList
-        :room-code="roomCode"
-        :status="roomStatus"
-        :members="roomMembers"
+    <div class="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)_340px]">
+      <QuestionList
+        :questions="gameStore.questionList"
+        :answers="gameStore.answerRecords"
         class="xl:sticky xl:top-24 xl:self-start"
       />
 
@@ -33,26 +33,16 @@
           :answers="gameStore.answerRecords"
         />
 
-        <QuestionList
-          :questions="gameStore.questionList"
-          :answers="gameStore.answerRecords"
-        />
-
-        <HostControlPanel
-          :can-manage-game="canManageGame"
+        <MessageInput
+          v-model="messageDraft"
+          v-model:mode="messageMode"
+          :disabled="submitDisabled"
           :can-start-game="canStartGame"
           :can-reveal-answer="canRevealAnswer"
           :can-finish-game="canFinishGame"
           :start-game-hint="startGameHint"
-          :pending-questions="gameStore.pendingQuestions"
-          :selected-question-id="selectedQuestionId"
-          :selected-outcome="selectedOutcome"
-          :answer-draft="answerDraft"
-          @update:selected-question-id="selectedQuestionId = $event"
-          @update:selected-outcome="selectedOutcome = $event"
-          @update:answer-draft="answerDraft = $event"
-          @submit-answer="handleSubmitAnswer"
-          @fill-template="fillHostTemplate"
+          @submit="handleSubmitInput"
+          @clear="messageDraft = ''"
           @start-game="handleStartGame"
           @reveal-answer="handleRevealAnswer"
           @finish-game="handleFinishGame"
@@ -63,35 +53,23 @@
         :messages="chatStore.activeMessages"
         class="xl:sticky xl:top-24 xl:self-start"
       />
-
-      <div class="xl:col-start-2 xl:col-span-2">
-        <MessageInput
-          v-model="messageDraft"
-          v-model:mode="messageMode"
-          :disabled="submitDisabled"
-          @submit="handleSubmitInput"
-          @clear="messageDraft = ''"
-        />
-      </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 
 import ChatPanel from '@/modules/room/components/ChatPanel.vue'
-import HostControlPanel from '@/modules/room/components/HostControlPanel.vue'
-import MemberList from '@/modules/room/components/MemberList.vue'
 import MessageInput from '@/modules/room/components/MessageInput.vue'
 import QuestionList from '@/modules/room/components/QuestionList.vue'
 import RoomHeader from '@/modules/room/components/RoomHeader.vue'
 import SoupPanel from '@/modules/room/components/SoupPanel.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
-import { useGameStore, type AnswerRecord } from '@/stores/game'
+import { useGameStore } from '@/stores/game'
 import { useRoomStore } from '@/stores/room'
 import { useUserStore } from '@/stores/user'
 
@@ -106,19 +84,16 @@ const chatStore = useChatStore()
 
 const messageDraft = ref('')
 const messageMode = ref<'chat' | 'question'>('chat')
-const selectedQuestionId = ref<string | null>(null)
-const selectedOutcome = ref<AnswerRecord['outcome']>('yes')
-const answerDraft = ref('')
 
 const roomCodeParam = computed(() => String(route.params.roomId || ''))
 const roomTitle = computed(() => roomStore.currentRoom?.name ?? `房间 ${roomCodeParam.value}`)
-const roomDescription = computed(
-  () => roomStore.currentRoom?.description ?? '这里是多人实时推理房间。'
-)
+const roomDescription = computed(() => roomStore.currentRoom?.description ?? '这里是多人实时推理房间。')
 const roomStatus = computed(() => roomStore.currentRoom?.status ?? 'waiting')
 const roomMode = computed(() => roomStore.currentRoom?.mode ?? 'casual')
 const roomMembers = computed(() => roomStore.currentRoom?.members ?? [])
 const roomCode = computed(() => roomStore.roomCode)
+const hostNickname = computed(() => roomStore.currentRoom?.hostNickname ?? '房主')
+const roomCapacity = computed(() => roomStore.currentRoom?.capacity ?? 0)
 const realtimeStatus = computed(() => (roomStore.connected ? '实时同步中' : '等待连接'))
 
 const currentUserId = computed(() => authStore.currentUserId ?? userStore.profile?.id ?? '')
@@ -138,38 +113,24 @@ const canStartGame = computed(
 )
 
 const canRevealAnswer = computed(
-  () => canManageGame.value && ['playing'].includes(roomStatus.value)
+  () =>
+    canManageGame.value &&
+    roomStore.isInRoom &&
+    roomStore.connected &&
+    roomStatus.value === 'playing'
 )
-
 const canFinishGame = computed(
-  () => canManageGame.value && ['playing', 'revealed'].includes(roomStatus.value)
+  () =>
+    canManageGame.value &&
+    roomStore.isInRoom &&
+    roomStore.connected &&
+    ['playing', 'revealed'].includes(roomStatus.value)
 )
 
-const startGameHint = computed(() =>
-  canStartGame.value ? '当前人数较少，也可以先开始游戏。' : ''
-)
+const startGameHint = computed(() => (canStartGame.value ? '当前人数较少，也可以先开始游戏。' : ''))
 
 const submitDisabled = computed(
   () => messageDraft.value.trim().length === 0 || !roomStore.currentRoom || gameStore.loading || chatStore.sending
-)
-
-watch(
-  () => gameStore.pendingQuestions,
-  (pendingQuestions) => {
-    if (!selectedQuestionId.value && pendingQuestions.length > 0) {
-      selectedQuestionId.value = pendingQuestions[0].id
-    }
-  },
-  { deep: true, immediate: true }
-)
-
-watch(
-  () => route.params.roomId,
-  async (value) => {
-    if (typeof value === 'string' && value) {
-      await joinCurrentRoom(value)
-    }
-  }
 )
 
 onMounted(async () => {
@@ -219,29 +180,6 @@ async function handleSubmitInput() {
   } catch (error) {
     message.error(error instanceof Error ? error.message : '发送失败')
   }
-}
-
-async function handleSubmitAnswer() {
-  if (!roomStore.currentRoom || !selectedQuestionId.value || !answerDraft.value.trim()) {
-    return
-  }
-
-  try {
-    await gameStore.respondToQuestion({
-      questionId: selectedQuestionId.value,
-      outcome: selectedOutcome.value,
-      content: answerDraft.value.trim()
-    })
-
-    selectedQuestionId.value = gameStore.pendingQuestions[0]?.id ?? null
-    answerDraft.value = ''
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '提交回答失败')
-  }
-}
-
-function fillHostTemplate() {
-  answerDraft.value = gameStore.answerTemplate(selectedOutcome.value)
 }
 
 async function handleStartGame() {

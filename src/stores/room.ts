@@ -252,7 +252,7 @@ export const useRoomStore = defineStore('room', {
       })
 
       socket.on(WS_SERVER_EVENTS.GAME_ANSWER_CREATED, () => {
-        gameStore.receiveSystemEvent('主持人已回答问题。')
+        gameStore.receiveSystemEvent('AI 主持人已回答问题。')
       })
 
       socket.on(WS_SERVER_EVENTS.GAME_REVEALED, () => {

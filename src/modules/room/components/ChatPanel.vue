@@ -4,13 +4,16 @@
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-lg font-semibold text-slate-900">聊天区</div>
-          <div class="text-sm text-slate-500">右侧用于展示普通聊天消息，正式提问会进入中间区域。</div>
+          <div class="text-sm text-slate-500">右侧用于普通聊天，最新消息会自动跟进到底部。</div>
         </div>
         <NTag size="small" type="info">{{ messages.length }} 条消息</NTag>
       </div>
     </template>
 
-    <div class="grid gap-3">
+    <div
+      ref="listRef"
+      class="grid max-h-[680px] gap-3 overflow-y-auto pr-1"
+    >
       <div
         v-for="message in messages"
         :key="message.id"
@@ -37,13 +40,28 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
 import { NCard, NEmpty, NTag } from 'naive-ui'
 
 import type { ChatMessage } from '@/stores/chat'
 
-defineProps<{
+const props = defineProps<{
   messages: ChatMessage[]
 }>()
+
+const listRef = ref<HTMLElement | null>(null)
+
+watch(
+  () => props.messages.length,
+  async () => {
+    await nextTick()
+
+    if (listRef.value) {
+      listRef.value.scrollTop = listRef.value.scrollHeight
+    }
+  },
+  { immediate: true }
+)
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString('zh-CN', {

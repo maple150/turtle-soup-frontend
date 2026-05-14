@@ -22,7 +22,7 @@ export interface RegisterResult {
   userId: string
   username: string
   nickname: string
-  email: string
+  email: string | null
 }
 
 export interface RefreshTokenParams {
@@ -40,22 +40,11 @@ export interface LogoutParams {
   refreshToken?: string
 }
 
-function buildRegisterPayload(params: RegisterParams) {
-  const safeUsername = params.username.trim()
-
-  return {
-    username: safeUsername,
-    nickname: safeUsername,
-    email: `${safeUsername}@placeholder.local`,
-    password: params.password
-  }
-}
-
 export function login(params: LoginParams) {
   return request.post<ApiResponse<LoginResult>>(
     '/auth/login',
     {
-      account: params.username,
+      username: params.username,
       password: params.password
     },
     {
@@ -65,7 +54,7 @@ export function login(params: LoginParams) {
 }
 
 export function register(params: RegisterParams) {
-  return request.post<ApiResponse<RegisterResult>>('/auth/register', buildRegisterPayload(params), {
+  return request.post<ApiResponse<RegisterResult>>('/auth/register', params, {
     skipAuth: true
   })
 }

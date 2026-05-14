@@ -7,7 +7,9 @@ export const adminRoutes: RouteRecordRaw[] = [
     component: () => import('./pages/AdminPage.vue'),
     meta: {
       title: '管理后台',
-      activeMenu: '/admin'
+      activeMenu: '/admin',
+      requiresAuth: true,
+      requiresAdmin: true
     }
   }
 ]

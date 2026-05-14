@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 
-import { getCurrentUserProfile, type UserProfile } from '@/api/user'
+import {
+  getCurrentUserProfile,
+  type UserProfile,
+  updateCurrentUserProfile
+} from '@/api/user'
 import { unwrapResponse } from '@/api/request'
 
 interface UserState {
@@ -36,6 +40,17 @@ export const useUserStore = defineStore('user', {
 
       try {
         const profile = unwrapResponse(await getCurrentUserProfile())
+        this.setProfile(profile)
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async updateProfile(payload: { nickname?: string; email?: string; bio?: string }) {
+      this.loading = true
+
+      try {
+        const profile = unwrapResponse(await updateCurrentUserProfile(payload))
         this.setProfile(profile)
       } finally {
         this.loading = false

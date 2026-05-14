@@ -23,37 +23,38 @@
     <div class="grid gap-6">
       <NCard class="rounded-3xl border-0 shadow-soft">
         <template #header>
-          <div class="text-lg font-semibold text-slate-900">基础信息</div>
+          <div class="text-lg font-semibold text-slate-900">编辑资料</div>
         </template>
 
-        <div v-if="userStore.profile" class="grid gap-5 md:grid-cols-2">
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <div class="text-sm text-slate-500">用户名</div>
-            <div class="mt-2 text-base font-semibold text-slate-900">{{ userStore.profile.username }}</div>
+        <NForm ref="formRef" :model="formValue" :rules="rules" label-placement="top">
+          <div class="grid gap-5 md:grid-cols-2">
+            <NFormItem label="用户名">
+              <NInput :value="userStore.profile?.username || ''" disabled />
+            </NFormItem>
+            <NFormItem label="昵称" path="nickname">
+              <NInput v-model:value="formValue.nickname" placeholder="请输入昵称" />
+            </NFormItem>
+            <NFormItem label="邮箱" path="email">
+              <NInput v-model:value="formValue.email" placeholder="可选，留空则不展示" />
+            </NFormItem>
+            <NFormItem label="当前身份">
+              <NInput :value="userStore.userRoles.join('、') || '玩家'" disabled />
+            </NFormItem>
+            <NFormItem label="个人简介" path="bio" class="md:col-span-2">
+              <NInput
+                v-model:value="formValue.bio"
+                type="textarea"
+                :autosize="{ minRows: 4, maxRows: 6 }"
+                placeholder="介绍一下你自己"
+              />
+            </NFormItem>
           </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <div class="text-sm text-slate-500">昵称</div>
-            <div class="mt-2 text-base font-semibold text-slate-900">{{ userStore.profile.nickname }}</div>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <div class="text-sm text-slate-500">邮箱</div>
-            <div class="mt-2 text-base font-semibold text-slate-900">{{ userStore.profile.email }}</div>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-            <div class="text-sm text-slate-500">角色</div>
-            <div class="mt-2 text-base font-semibold text-slate-900">
-              {{ userStore.profile.roles.join('、') || '玩家' }}
-            </div>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 md:col-span-2">
-            <div class="text-sm text-slate-500">个人简介</div>
-            <div class="mt-2 text-base leading-7 text-slate-900">
-              {{ userStore.profile.bio || '这个人很低调，还没有留下简介。' }}
-            </div>
-          </div>
-        </div>
 
-        <NEmpty v-else description="还没有读取到个人资料" />
+          <div class="mt-2 flex gap-3">
+            <NButton type="primary" :loading="userStore.loading" @click="handleSave">保存资料</NButton>
+            <NButton @click="resetForm">重置</NButton>
+          </div>
+        </NForm>
       </NCard>
 
       <NCard class="rounded-3xl border-0 shadow-soft">
@@ -77,13 +78,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { NCard, NEmpty, NText } from 'naive-ui'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import type { FormInst, FormRules } from 'naive-ui'
+import { NButton, NCard, NForm, NFormItem, NInput, NText, useMessage } from 'naive-ui'
 
 import tavernLogo from '@/assets/tavern-logo.svg'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
+const message = useMessage()
+const formRef = ref<FormInst | null>(null)
+const formValue = reactive({
+  nickname: '',
+  email: '',
+  bio: ''
+})
+
+const rules: FormRules = {
+  nickname: [
+    { required: true, message: '请输入昵称', trigger: ['blur', 'input'] }
+  ],
+  email: [
+    {
+      validator: (_rule, value: string) =>
+        value.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      message: '邮箱格式不正确',
+      trigger: ['blur', 'input']
+    }
+  ]
+}
 
 const stats = computed(() => [
   { label: '当前状态', value: userStore.profile ? '已登录' : '未登录' },
@@ -92,10 +115,39 @@ const stats = computed(() => [
 ])
 
 const panels = [
-  { label: '房间加入', value: '进入大厅后可直接加入公开房间' },
-  { label: '实时同步', value: '进入房间后聊天与提问会实时更新' },
-  { label: '后续扩展', value: '战绩、收藏和历史记录可继续接入' }
+  { label: '昵称默认值', value: '默认与用户名一致，可随时修改' },
+  { label: '邮箱展示', value: '邮箱可选，留空时前端不展示' },
+  { label: '个人简介', value: '简介默认留空，可自行填写' }
 ]
+
+function resetForm() {
+  formValue.nickname = userStore.profile?.nickname || ''
+  formValue.email = userStore.profile?.email || ''
+  formValue.bio = userStore.profile?.bio || ''
+}
+
+watch(
+  () => userStore.profile,
+  () => {
+    resetForm()
+  },
+  { immediate: true }
+)
+
+async function handleSave() {
+  await formRef.value?.validate()
+
+  try {
+    await userStore.updateProfile({
+      nickname: formValue.nickname.trim(),
+      email: formValue.email.trim(),
+      bio: formValue.bio.trim()
+    })
+    message.success('个人资料已保存')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '保存失败')
+  }
+}
 
 onMounted(async () => {
   if (!userStore.profile) {

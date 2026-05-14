@@ -67,7 +67,7 @@ export const useGameStore = defineStore('game', {
     timerSeconds: 0,
     soupTitle: '',
     prompt: '',
-    hostHint: '主持人只回答“是 / 否 / 无关”，避免直接说出答案。',
+    hostHint: 'AI 主持人会根据题面自动回答正式提问，公布答案与结束游戏仍由房主决定。',
     questionList: [],
     answerRecords: [],
     actionHistory: [],
@@ -236,7 +236,7 @@ export const useGameStore = defineStore('game', {
       this.timerSeconds = 0
       this.soupTitle = ''
       this.prompt = ''
-      this.hostHint = '主持人只回答“是 / 否 / 无关”，避免直接说出答案。'
+      this.hostHint = 'AI 主持人会根据题面自动回答正式提问，公布答案与结束游戏仍由房主决定。'
       this.questionList = []
       this.answerRecords = []
       this.actionHistory = []

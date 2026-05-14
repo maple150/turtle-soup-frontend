@@ -1,25 +1,34 @@
 <template>
   <NCard class="rounded-3xl border-0 shadow-soft">
     <div class="grid gap-4">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div class="text-lg font-semibold text-slate-900">输入区</div>
           <div class="text-sm text-slate-500">
-            可以切换普通聊天和正式提问，避免两类消息混在一起。
+            普通聊天和正式提问分开输入。AI 会自动处理正式提问。
           </div>
         </div>
 
-        <NRadioGroup :value="mode" size="large" @update:value="handleModeChange">
-          <NRadioButton value="chat">聊天</NRadioButton>
-          <NRadioButton value="question">正式提问</NRadioButton>
-        </NRadioGroup>
+        <div class="flex flex-wrap items-center gap-3">
+          <NRadioGroup :value="mode" size="large" @update:value="handleModeChange">
+            <NRadioButton value="chat">聊天</NRadioButton>
+            <NRadioButton value="question">正式提问</NRadioButton>
+          </NRadioGroup>
+          <NButton type="primary" :disabled="!canStartGame" @click="$emit('start-game')">开始游戏</NButton>
+          <NButton :disabled="!canRevealAnswer" @click="$emit('reveal-answer')">公布答案</NButton>
+          <NButton :disabled="!canFinishGame" @click="$emit('finish-game')">结束游戏</NButton>
+        </div>
       </div>
+
+      <NAlert v-if="startGameHint" type="info" :show-icon="false">
+        {{ startGameHint }}
+      </NAlert>
 
       <div class="grid gap-4 md:grid-cols-[1fr_auto]">
         <NInput
           :value="modelValue"
           type="textarea"
-          :autosize="{ minRows: 3, maxRows: 5 }"
+          :autosize="{ minRows: 4, maxRows: 6 }"
           :placeholder="placeholder"
           @update:value="handleInput"
         />
@@ -37,12 +46,16 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NButton, NCard, NInput, NRadioButton, NRadioGroup } from 'naive-ui'
+import { NAlert, NButton, NCard, NInput, NRadioButton, NRadioGroup } from 'naive-ui'
 
 const props = defineProps<{
   modelValue: string
   mode: 'chat' | 'question'
   disabled?: boolean
+  canStartGame: boolean
+  canRevealAnswer: boolean
+  canFinishGame: boolean
+  startGameHint?: string
 }>()
 
 const emit = defineEmits<{
@@ -50,12 +63,13 @@ const emit = defineEmits<{
   (event: 'update:mode', value: 'chat' | 'question'): void
   (event: 'submit'): void
   (event: 'clear'): void
+  (event: 'start-game'): void
+  (event: 'reveal-answer'): void
+  (event: 'finish-game'): void
 }>()
 
 const placeholder = computed(() =>
-  props.mode === 'chat'
-    ? '输入聊天内容'
-    : '输入你想向主持人提出的正式问题'
+  props.mode === 'chat' ? '输入聊天内容' : '输入你想向 AI 主持人提出的正式问题'
 )
 
 function handleInput(value: string) {
