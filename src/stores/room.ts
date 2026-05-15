@@ -269,6 +269,7 @@ export const useRoomStore = defineStore('room', {
       })
 
       socket.on(WS_SERVER_EVENTS.GAME_FINISHED, () => {
+        gameStore.markGameFinished()
         gameStore.receiveSystemEvent('本局游戏已结束。')
       })
 

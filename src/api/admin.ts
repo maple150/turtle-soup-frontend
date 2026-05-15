@@ -58,6 +58,18 @@ export function getAdminUsers(params?: { page?: number; pageSize?: number; keywo
   return request.get<ApiResponse<PaginatedData<AdminUser>>>('/admin/users', { params })
 }
 
+export function createAdminUser(params: {
+  username: string
+  password: string
+  nickname?: string
+  email?: string
+  bio?: string
+  roles?: string[]
+  status?: 'active' | 'blocked' | 'deleted'
+}) {
+  return request.post<ApiResponse<UserProfile>>('/admin/users', params)
+}
+
 export function updateAdminUser(
   userId: string,
   params: {
@@ -69,6 +81,10 @@ export function updateAdminUser(
   }
 ) {
   return request.patch<ApiResponse<UserProfile>>(`/admin/users/${userId}`, params)
+}
+
+export function deleteAdminUser(userId: string) {
+  return request.delete<ApiResponse<{ userId: string; deleted: true }>>(`/admin/users/${userId}`)
 }
 
 export function getAdminSoups(params?: { page?: number; pageSize?: number; keyword?: string }) {
@@ -90,6 +106,10 @@ export function updateAdminSoup(
   }>
 ) {
   return request.patch<ApiResponse<SoupDetail>>(`/admin/soups/${soupId}`, params)
+}
+
+export function deleteAdminSoup(soupId: string) {
+  return request.delete<ApiResponse<{ soupId: string; deleted: true }>>(`/admin/soups/${soupId}`)
 }
 
 export function importAdminSoups(items: AdminSoupImportItem[]) {

@@ -288,6 +288,11 @@ export const useGameStore = defineStore('game', {
       this.lastEventAt = new Date().toISOString()
     },
 
+    markGameFinished() {
+      this.phase = 'finished'
+      this.lastEventAt = new Date().toISOString()
+    },
+
     async startGame() {
       this.loading = true
 
@@ -340,16 +345,6 @@ export const useGameStore = defineStore('game', {
           answerType: payload.outcome,
           answerText: payload.content
         })
-      } finally {
-        this.loading = false
-      }
-    },
-
-    async revealAnswer() {
-      this.loading = true
-
-      try {
-        getSocket().emit(WS_CLIENT_EVENTS.GAME_REVEAL, {})
       } finally {
         this.loading = false
       }

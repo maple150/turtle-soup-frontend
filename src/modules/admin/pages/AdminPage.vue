@@ -23,7 +23,7 @@
         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ overview?.totals.users ?? '--' }}</div>
       </NCard>
       <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
-        <div class="text-sm text-slate-500">题目总数</div>
+        <div class="text-sm text-slate-500">题库总数</div>
         <div class="mt-2 text-2xl font-semibold text-slate-900">{{ overview?.totals.soups ?? '--' }}</div>
       </NCard>
       <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '16px 18px' }">
@@ -39,21 +39,39 @@
     <NCard class="rounded-3xl border-0 shadow-soft">
       <NTabs type="line" animated>
         <NTabPane name="users" tab="用户管理">
-          <div class="grid gap-4">
+          <div class="grid gap-5">
+            <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div class="text-base font-semibold text-slate-900">新增用户</div>
+                  <div class="text-sm text-slate-500">管理员可直接创建账号，并分配角色与状态。</div>
+                </div>
+                <NButton type="primary" @click="handleCreateUser">添加用户</NButton>
+              </div>
+              <div class="mt-4 grid gap-4 lg:grid-cols-4">
+                <NInput v-model:value="createUserForm.username" placeholder="用户名" />
+                <NInput v-model:value="createUserForm.password" type="password" show-password-on="click" placeholder="密码" />
+                <NInput v-model:value="createUserForm.nickname" placeholder="昵称，可选" />
+                <NInput v-model:value="createUserForm.rolesText" placeholder="角色，逗号分隔" />
+              </div>
+            </div>
+
             <div
               v-for="user in users"
               :key="user.id"
               class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
             >
-              <div class="grid gap-4 lg:grid-cols-[1fr_1fr_220px_220px_auto] lg:items-end">
-                <NInput v-model:value="user.nickname" placeholder="昵称" />
-                <NInput v-model:value="user.email" placeholder="邮箱，可留空" />
-                <NSelect v-model:value="user.status" :options="userStatusOptions" />
-                <NInput v-model:value="user.rolesText" placeholder="角色，逗号分隔" />
-                <NButton type="primary" @click="saveUser(user)">保存用户</NButton>
-              </div>
-              <div class="mt-3 text-sm text-slate-500">
-                {{ user.username }} · {{ user.bio || '暂无简介' }}
+              <div class="grid gap-4">
+                <div class="grid gap-4 lg:grid-cols-[1fr_1fr_220px_220px_auto_auto] lg:items-end">
+                  <NInput v-model:value="user.nickname" placeholder="昵称" />
+                  <NInput v-model:value="user.email" placeholder="邮箱，可留空" />
+                  <NSelect v-model:value="user.status" :options="userStatusOptions" />
+                  <NInput v-model:value="user.rolesText" placeholder="角色，逗号分隔" />
+                  <NButton type="primary" @click="saveUser(user)">更新用户</NButton>
+                  <NButton tertiary type="error" @click="handleDeleteUser(user)">删除用户</NButton>
+                </div>
+                <NInput v-model:value="user.bio" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" placeholder="个人简介" />
+                <div class="text-sm text-slate-500">用户名：{{ user.username }}</div>
               </div>
             </div>
           </div>
@@ -88,11 +106,12 @@
               class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
             >
               <div class="grid gap-4">
-                <div class="grid gap-4 lg:grid-cols-[1fr_220px_220px_auto] lg:items-end">
+                <div class="grid gap-4 lg:grid-cols-[1fr_220px_220px_auto_auto] lg:items-end">
                   <NInput v-model:value="soup.title" placeholder="题目标题" />
                   <NSelect v-model:value="soup.difficulty" :options="difficultyOptions" />
                   <NSelect v-model:value="soup.status" :options="soupStatusOptions" />
-                  <NButton type="primary" @click="saveSoup(soup)">保存题目</NButton>
+                  <NButton type="primary" @click="saveSoup(soup)">更新题目</NButton>
+                  <NButton tertiary type="error" @click="handleDeleteSoup(soup)">删除题目</NButton>
                 </div>
                 <NInput v-model:value="soup.description" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
                 <NInput v-model:value="soup.answer" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" />
@@ -112,7 +131,7 @@
                 <NInput v-model:value="room.name" placeholder="房间名称" />
                 <NSelect v-model:value="room.status" :options="roomStatusOptions" />
                 <NInputNumber v-model:value="room.capacity" :min="2" :max="16" />
-                <NButton type="primary" @click="saveRoom(room)">保存房间</NButton>
+                <NButton type="primary" @click="saveRoom(room)">更新房间</NButton>
                 <NButton tertiary type="error" @click="handleDeleteRoom(room.roomCode)">删除房间</NButton>
               </div>
               <NInput
@@ -185,7 +204,10 @@ import {
 
 import type { AiConfig, AdminOverview, AdminSoupImportItem } from '@/api/admin'
 import {
+  createAdminUser,
   deleteAdminRoom,
+  deleteAdminSoup,
+  deleteAdminUser,
   getAdminAiConfig,
   getAdminOverview,
   getAdminRooms,
@@ -249,11 +271,17 @@ const aiConfig = reactive<AiConfig>({
   temperature: 0.3,
   maxTokens: 512
 })
+const createUserForm = reactive({
+  username: '',
+  password: '',
+  nickname: '',
+  rolesText: 'player'
+})
 
 const userStatusOptions = [
   { label: '正常', value: 'active' },
   { label: '封禁', value: 'blocked' },
-  { label: '删除', value: 'deleted' }
+  { label: '已删除', value: 'deleted' }
 ]
 
 const difficultyOptions = [
@@ -321,20 +349,64 @@ async function reloadAll() {
   }
 }
 
+async function handleCreateUser() {
+  if (!createUserForm.username.trim() || !createUserForm.password.trim()) {
+    message.warning('请先填写用户名和密码')
+    return
+  }
+
+  try {
+    await createAdminUser({
+      username: createUserForm.username.trim(),
+      password: createUserForm.password,
+      nickname: createUserForm.nickname.trim() || undefined,
+      roles: createUserForm.rolesText
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    })
+    message.success(`已添加用户 ${createUserForm.username.trim()}`)
+    createUserForm.username = ''
+    createUserForm.password = ''
+    createUserForm.nickname = ''
+    createUserForm.rolesText = 'player'
+    await reloadAll()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '添加用户失败')
+  }
+}
+
 async function saveUser(user: (typeof users.value)[number]) {
   try {
     await updateAdminUser(user.id, {
       nickname: user.nickname,
       email: user.email,
+      bio: user.bio,
       roles: user.rolesText
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean),
       status: user.status
     })
-    message.success(`已保存用户 ${user.username}`)
+    message.success(`已更新用户 ${user.username}`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存用户失败')
+    message.error(error instanceof Error ? error.message : '更新用户失败')
+  }
+}
+
+async function handleDeleteUser(user: (typeof users.value)[number]) {
+  const confirmed = window.confirm(`确认删除用户 ${user.username} 吗？删除后会保留历史记录，但账号将不可继续使用。`)
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await deleteAdminUser(user.id)
+    message.success(`已删除用户 ${user.username}`)
+    await reloadAll()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '删除用户失败')
   }
 }
 
@@ -347,9 +419,25 @@ async function saveSoup(soup: (typeof soups.value)[number]) {
       difficulty: soup.difficulty,
       status: soup.status
     })
-    message.success(`已保存题目 ${soup.title}`)
+    message.success(`已更新题目 ${soup.title}`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存题目失败')
+    message.error(error instanceof Error ? error.message : '更新题目失败')
+  }
+}
+
+async function handleDeleteSoup(soup: (typeof soups.value)[number]) {
+  const confirmed = window.confirm(`确认删除题目 ${soup.title} 吗？此操作不可恢复。`)
+
+  if (!confirmed) {
+    return
+  }
+
+  try {
+    await deleteAdminSoup(soup.id)
+    message.success(`已删除题目 ${soup.title}`)
+    await reloadAll()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '删除题目失败')
   }
 }
 
@@ -361,9 +449,9 @@ async function saveRoom(room: (typeof rooms.value)[number]) {
       status: room.status,
       capacity: room.capacity
     })
-    message.success(`已保存房间 ${room.roomCode}`)
+    message.success(`已更新房间 ${room.roomCode}`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '保存房间失败')
+    message.error(error instanceof Error ? error.message : '更新房间失败')
   }
 }
 
@@ -416,7 +504,7 @@ async function handleImportSoups() {
       : null
 
   if (!rawItems || rawItems.length === 0) {
-    message.error('请提供至少一条题库数据')
+    message.error('请至少提供一条题库数据')
     return
   }
 

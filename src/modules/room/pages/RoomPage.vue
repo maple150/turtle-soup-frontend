@@ -13,13 +13,10 @@
       :members="roomMembers"
     />
 
-    <div class="grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-      <QuestionList
-        :questions="gameStore.questionList"
-        :answers="gameStore.answerRecords"
-      />
+    <div class="grid items-stretch gap-4 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+      <QuestionList :questions="gameStore.questionList" :answers="gameStore.answerRecords" />
 
-      <div class="grid gap-4">
+      <div class="grid h-full content-start gap-4">
         <SoupPanel
           :soup-title="gameStore.soupTitle"
           :prompt="gameStore.prompt"
@@ -37,20 +34,16 @@
           v-model:mode="messageMode"
           :disabled="submitDisabled"
           :can-start-game="canStartGame"
-          :can-reveal-answer="canRevealAnswer"
           :can-finish-game="canFinishGame"
           :start-game-hint="startGameHint"
           @submit="handleSubmitInput"
           @clear="messageDraft = ''"
           @start-game="handleStartGame"
-          @reveal-answer="handleRevealAnswer"
           @finish-game="handleFinishGame"
         />
       </div>
 
-      <ChatPanel
-        :messages="chatStore.activeMessages"
-      />
+      <ChatPanel :messages="chatStore.activeMessages" />
     </div>
   </section>
 </template>
@@ -97,9 +90,7 @@ const realtimeStatus = computed(() => (roomStore.connected ? '实时同步中' :
 const currentUserId = computed(() => authStore.currentUserId ?? userStore.profile?.id ?? '')
 
 const canManageGame = computed(() =>
-  roomMembers.value.some(
-    (member) => member.userId === currentUserId.value && member.role === 'host'
-  )
+  roomMembers.value.some((member) => member.userId === currentUserId.value && member.role === 'host')
 )
 
 const canStartGame = computed(
@@ -110,19 +101,12 @@ const canStartGame = computed(
     (roomStore.connected || Boolean(roomStore.currentRoom))
 )
 
-const canRevealAnswer = computed(
-  () =>
-    canManageGame.value &&
-    roomStore.isInRoom &&
-    roomStore.connected &&
-    roomStatus.value === 'playing'
-)
 const canFinishGame = computed(
   () =>
     canManageGame.value &&
     roomStore.isInRoom &&
     roomStore.connected &&
-    ['playing', 'revealed'].includes(roomStatus.value)
+    roomStatus.value === 'playing'
 )
 
 const startGameHint = computed(() => (canStartGame.value ? '当前人数较少，也可以先开始游戏。' : ''))
@@ -195,15 +179,11 @@ async function handleStartGame() {
   }
 }
 
-async function handleRevealAnswer() {
-  try {
-    await gameStore.revealAnswer()
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '公布答案失败')
-  }
-}
-
 async function handleFinishGame() {
+  if (!canFinishGame.value) {
+    return
+  }
+
   try {
     await gameStore.finishGame()
   } catch (error) {

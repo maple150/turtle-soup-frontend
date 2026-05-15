@@ -1,65 +1,62 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
-    <div class="grid gap-3">
+  <NCard class="flex h-full rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+    <div class="flex h-full min-h-0 flex-1 flex-col gap-3">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-base font-semibold text-slate-900">提问记录</div>
-          <div class="text-sm text-slate-500">只保留正式提问与 AI 回答，便于快速回看。</div>
+          <div class="text-sm font-semibold text-slate-900">提问记录</div>
+          <div class="text-sm text-slate-500">这里只保留正式提问和 AI 回答，方便快速回看。</div>
         </div>
         <NTag size="small" type="info">{{ questions.length }} 条</NTag>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div
-          ref="listRef"
-          class="max-h-[500px] min-h-[380px] space-y-3 overflow-y-auto pr-1"
-        >
-        <div
-          v-for="question in questions"
-          :key="question.id"
-          class="rounded-2xl border border-slate-200 bg-white px-4 py-3"
-        >
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="truncate font-semibold text-slate-900">{{ question.senderName }}</span>
-                <NTag size="tiny" :type="question.status === 'pending' ? 'warning' : 'success'">
-                  {{ QUESTION_STATUS_LABELS[question.status] }}
-                </NTag>
-              </div>
-              <div class="mt-2 text-sm leading-6 text-slate-700">{{ question.content }}</div>
-            </div>
-            <span class="shrink-0 text-[11px] text-slate-400">{{ formatTime(question.createdAt) }}</span>
-          </div>
-
+      <div class="flex min-h-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div ref="listRef" class="flex-1 space-y-3 overflow-y-auto pr-1">
           <div
-            v-if="answerByQuestionId[question.id]"
-            class="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+            v-for="question in questions"
+            :key="question.id"
+            class="rounded-2xl border border-slate-200 bg-white px-4 py-3"
           >
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-semibold text-slate-900">
-                  {{ answerByQuestionId[question.id].responderName }}
-                </span>
-                <NTag size="tiny" :type="answerTagType(answerByQuestionId[question.id].outcome)">
-                  {{ ANSWER_TYPE_LABELS[answerByQuestionId[question.id].outcome] }}
-                </NTag>
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="truncate font-semibold text-slate-900">{{ question.senderName }}</span>
+                  <NTag size="tiny" :type="question.status === 'pending' ? 'warning' : 'success'">
+                    {{ QUESTION_STATUS_LABELS[question.status] }}
+                  </NTag>
+                </div>
+                <div class="mt-2 text-sm leading-6 text-slate-700">{{ question.content }}</div>
               </div>
-              <span class="text-[11px] text-slate-400">
-                {{ formatTime(answerByQuestionId[question.id].createdAt) }}
-              </span>
+              <span class="shrink-0 text-[11px] text-slate-400">{{ formatTime(question.createdAt) }}</span>
             </div>
-            <div class="mt-1.5 text-sm leading-6 text-slate-600">
-              {{ answerByQuestionId[question.id].content }}
+
+            <div
+              v-if="answerByQuestionId[question.id]"
+              class="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-slate-900">
+                    {{ answerByQuestionId[question.id].responderName }}
+                  </span>
+                  <NTag size="tiny" :type="answerTagType(answerByQuestionId[question.id].outcome)">
+                    {{ ANSWER_TYPE_LABELS[answerByQuestionId[question.id].outcome] }}
+                  </NTag>
+                </div>
+                <span class="text-[11px] text-slate-400">
+                  {{ formatTime(answerByQuestionId[question.id].createdAt) }}
+                </span>
+              </div>
+              <div class="mt-1.5 text-sm leading-6 text-slate-600">
+                {{ answerByQuestionId[question.id].content }}
+              </div>
             </div>
           </div>
-        </div>
 
-        <NEmpty
-          v-if="questions.length === 0"
-          description="暂无正式提问"
-          class="flex min-h-[396px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10"
-        />
+          <NEmpty
+            v-if="questions.length === 0"
+            description="暂无正式提问"
+            class="flex min-h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10"
+          />
         </div>
       </div>
     </div>
@@ -88,9 +85,7 @@ const answerByQuestionId = computed(() =>
 )
 
 const activityCursor = computed(() =>
-  props.questions
-    .map((question) => `${question.id}:${question.answeredAt ?? 'pending'}`)
-    .join('|')
+  props.questions.map((question) => `${question.id}:${question.answeredAt ?? 'pending'}`).join('|')
 )
 
 watch(

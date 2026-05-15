@@ -1,19 +1,16 @@
 <template>
-  <NCard class="rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
-    <div class="grid gap-3">
+  <NCard class="flex h-full rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+    <div class="flex h-full min-h-0 flex-1 flex-col gap-3">
       <div class="flex items-center justify-between gap-3">
         <div>
-          <div class="text-base font-semibold text-slate-900">聊天区</div>
-          <div class="text-sm text-slate-500">这里只显示普通聊天与必要系统消息，列表会自动跟到最新。</div>
+          <div class="text-sm font-semibold text-slate-900">聊天区</div>
+          <div class="text-sm text-slate-500">这里只显示普通聊天和必要系统消息，列表会自动跟到最新。</div>
         </div>
         <NTag size="small" type="info">{{ visibleMessages.length }} 条</NTag>
       </div>
 
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div
-          ref="listRef"
-          class="max-h-[500px] min-h-[380px] space-y-3 overflow-y-auto pr-1"
-        >
+      <div class="flex min-h-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div ref="listRef" class="flex-1 space-y-3 overflow-y-auto pr-1">
           <div
             v-for="message in visibleMessages"
             :key="message.id"
@@ -36,7 +33,7 @@
           <NEmpty
             v-if="visibleMessages.length === 0"
             description="暂无聊天消息"
-            class="flex min-h-[396px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10"
+            class="flex min-h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-10"
           />
         </div>
       </div>
@@ -76,7 +73,7 @@ const visibleMessages = computed(() =>
 )
 
 watch(
-  () => visibleMessages.value.length,
+  () => visibleMessages.value.map((message) => message.id).join('|'),
   async () => {
     await nextTick()
 
