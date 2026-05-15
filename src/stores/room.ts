@@ -17,7 +17,7 @@ import {
 import { unwrapResponse } from '@/api/request'
 import { ROOM_STATUS_LABELS } from '@/constants/labels'
 import { connectSocket, disconnectSocket, getSocket } from '@/services/socket'
-import { SOCKET_CONNECTION_EVENTS, WS_CLIENT_EVENTS, WS_SERVER_EVENTS } from '@/socket/events'
+import { SOCKET_CONNECTION_EVENTS, WS_SERVER_EVENTS } from '@/socket/events'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
@@ -200,6 +200,8 @@ export const useRoomStore = defineStore('room', {
       socket.off(SOCKET_CONNECTION_EVENTS.DISCONNECT)
       socket.off(SOCKET_CONNECTION_EVENTS.CONNECT_ERROR)
       socket.off(WS_SERVER_EVENTS.ROOM_SNAPSHOT)
+      socket.off(WS_SERVER_EVENTS.ROOM_MEMBER_JOINED)
+      socket.off(WS_SERVER_EVENTS.ROOM_MEMBER_LEFT)
       socket.off(WS_SERVER_EVENTS.ROOM_STATE_UPDATED)
       socket.off(WS_SERVER_EVENTS.CHAT_MESSAGE)
       socket.off(WS_SERVER_EVENTS.GAME_QUESTION_CREATED)
@@ -234,14 +236,16 @@ export const useRoomStore = defineStore('room', {
         this.syncRoomSnapshot(payload)
       })
 
-      socket.on(WS_SERVER_EVENTS.ROOM_STATE_UPDATED, () => {
-        try {
-          socket.emit(WS_CLIENT_EVENTS.ROOM_SNAPSHOT_GET, {
-            reason: 'manual'
-          })
-        } catch {
-          // Ignore transient snapshot refresh failures.
-        }
+      socket.on(WS_SERVER_EVENTS.ROOM_MEMBER_JOINED, (payload) => {
+        this.applyRoomMemberJoined(payload)
+      })
+
+      socket.on(WS_SERVER_EVENTS.ROOM_MEMBER_LEFT, (payload) => {
+        this.applyRoomMemberLeft(payload)
+      })
+
+      socket.on(WS_SERVER_EVENTS.ROOM_STATE_UPDATED, (payload) => {
+        this.applyRoomStateUpdate(payload)
       })
 
       socket.on(WS_SERVER_EVENTS.CHAT_MESSAGE, (payload) => {
@@ -292,6 +296,76 @@ export const useRoomStore = defineStore('room', {
         ticket: ticket.ticket,
         websocketPath: ticket.websocketPath
       })
+    },
+
+    applyRoomStateUpdate(payload: {
+      roomCode: string
+      status: RoomStatus
+      gameState: RoomStatus
+      onlineCount: number
+      updatedAt: number
+    }) {
+      if (!this.currentRoom || this.currentRoom.roomCode !== payload.roomCode) {
+        return
+      }
+
+      this.currentRoom = {
+        ...this.currentRoom,
+        status: payload.status,
+        updatedAt: payload.updatedAt,
+        onlineCount: payload.onlineCount
+      }
+      this.lastSyncedAt = new Date(payload.updatedAt).toISOString()
+    },
+
+    applyRoomMemberJoined(payload: {
+      roomCode: string
+      member?: RoomMember
+    }) {
+      if (!this.currentRoom || this.currentRoom.roomCode !== payload.roomCode || !payload.member) {
+        return
+      }
+
+      const existingIndex = this.currentRoom.members.findIndex((member) => member.userId === payload.member?.userId)
+      const nextMembers =
+        existingIndex >= 0
+          ? this.currentRoom.members.map((member, index) => (index === existingIndex ? payload.member! : member))
+          : [...this.currentRoom.members, payload.member]
+
+      this.currentRoom = {
+        ...this.currentRoom,
+        members: nextMembers,
+        onlineCount: nextMembers.filter((member) => member.online).length,
+        updatedAt: Date.now()
+      }
+      this.lastSyncedAt = new Date().toISOString()
+    },
+
+    applyRoomMemberLeft(payload: {
+      roomCode: string
+      userId: string
+    }) {
+      if (!this.currentRoom || this.currentRoom.roomCode !== payload.roomCode) {
+        return
+      }
+
+      const nextMembers = this.currentRoom.members.map((member) =>
+        member.userId === payload.userId
+          ? {
+              ...member,
+              online: false,
+              lastSeenAt: Date.now()
+            }
+          : member
+      )
+
+      this.currentRoom = {
+        ...this.currentRoom,
+        members: nextMembers,
+        onlineCount: nextMembers.filter((member) => member.online).length,
+        updatedAt: Date.now()
+      }
+      this.lastSyncedAt = new Date().toISOString()
     },
 
     resetState() {

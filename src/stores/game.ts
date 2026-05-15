@@ -104,6 +104,44 @@ function mapAnswerPayload(question: WsQuestionPayload): AnswerRecord | null {
   }
 }
 
+function createOptimisticQuestion(payload: {
+  roomId: string
+  senderId: string
+  senderName: string
+  content: string
+}): FormalQuestion {
+  return {
+    id: `temp-question-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    roomId: payload.roomId,
+    senderId: payload.senderId,
+    senderName: payload.senderName,
+    content: payload.content,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    answeredAt: null
+  }
+}
+
+function isOptimisticQuestionMatch(question: FormalQuestion, payload: WsQuestionPayload) {
+  if (!question.id.startsWith('temp-question-')) {
+    return false
+  }
+
+  if (question.roomId !== payload.roomId) {
+    return false
+  }
+
+  if (question.senderId !== payload.askerUserId) {
+    return false
+  }
+
+  if (question.content !== payload.questionText) {
+    return false
+  }
+
+  return Math.abs(new Date(question.createdAt).getTime() - payload.askedAt) <= 15000
+}
+
 export const useGameStore = defineStore('game', {
   state: (): GameState => ({
     currentRoomCode: null,
@@ -206,9 +244,12 @@ export const useGameStore = defineStore('game', {
 
     receiveQuestion(question: WsQuestionPayload) {
       const nextQuestion = mapQuestionPayload(question)
+      const optimisticIndex = this.questionList.findIndex((item) => isOptimisticQuestionMatch(item, question))
       const exists = this.questionList.some((item) => item.id === nextQuestion.id)
 
-      if (exists) {
+      if (optimisticIndex >= 0) {
+        this.questionList = this.questionList.map((item, index) => (index === optimisticIndex ? nextQuestion : item))
+      } else if (exists) {
         this.questionList = this.questionList.map((item) => (item.id === nextQuestion.id ? nextQuestion : item))
       } else {
         this.questionList = [...this.questionList, nextQuestion]
@@ -241,7 +282,9 @@ export const useGameStore = defineStore('game', {
       this.currentRound = payload.currentRound ? 1 : 0
       this.totalRounds = 1
       this.soupTitle = normalizeSoupTitle(payload.currentSoup?.title)
-      this.prompt = normalizeSoupPrompt(payload.currentSoup?.description ?? this.prompt || '房主还没有开始本局游戏。')
+      this.prompt = normalizeSoupPrompt(
+        payload.currentSoup?.description ?? (this.prompt || '房主还没有开始本局游戏。')
+      )
       this.lastEventAt = new Date().toISOString()
     },
 
@@ -255,13 +298,30 @@ export const useGameStore = defineStore('game', {
       }
     },
 
-    async submitQuestion(payload: { content: string }) {
+    async submitQuestion(payload: { content: string; roomId: string; senderId: string; senderName: string }) {
       this.loading = true
 
       try {
-        getSocket().emit(WS_CLIENT_EVENTS.GAME_QUESTION_SEND, {
+        const optimisticQuestion = createOptimisticQuestion({
+          roomId: payload.roomId,
+          senderId: payload.senderId,
+          senderName: payload.senderName,
           content: payload.content
         })
+
+        this.questionList = [...this.questionList, optimisticQuestion]
+        this.questionList.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        this.lastEventAt = new Date().toISOString()
+
+        try {
+          getSocket().emit(WS_CLIENT_EVENTS.GAME_QUESTION_SEND, {
+            content: payload.content
+          })
+        } catch (error) {
+          this.questionList = this.questionList.filter((item) => item.id !== optimisticQuestion.id)
+          this.lastEventAt = new Date().toISOString()
+          throw error
+        }
       } finally {
         this.loading = false
       }

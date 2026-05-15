@@ -170,7 +170,10 @@ async function handleSubmitInput() {
       })
     } else {
       await gameStore.submitQuestion({
-        content
+        content,
+        roomId: roomStore.currentRoom.id,
+        senderId: currentUserId.value || authStore.currentUserId || 'local',
+        senderName: userStore.displayName || authStore.currentUserName || '我'
       })
     }
 
