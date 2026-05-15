@@ -14,9 +14,13 @@
     />
 
     <div class="grid items-stretch gap-4 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-      <QuestionList :questions="gameStore.questionList" :answers="gameStore.answerRecords" />
+      <QuestionList
+        :questions="gameStore.questionList"
+        :answers="gameStore.answerRecords"
+        :panel-height="desktopSidePanelHeight"
+      />
 
-      <div class="grid h-full content-start gap-4">
+      <div ref="centerColumnRef" class="grid h-full content-start gap-4">
         <SoupPanel
           :soup-title="gameStore.soupTitle"
           :prompt="gameStore.prompt"
@@ -43,13 +47,13 @@
         />
       </div>
 
-      <ChatPanel :messages="chatStore.activeMessages" />
+      <ChatPanel :messages="chatStore.activeMessages" :panel-height="desktopSidePanelHeight" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -75,6 +79,11 @@ const chatStore = useChatStore()
 
 const messageDraft = ref('')
 const messageMode = ref<'chat' | 'question'>('chat')
+const centerColumnRef = ref<HTMLElement | null>(null)
+const sidePanelHeight = ref<number | null>(null)
+const isDesktopLayout = ref(false)
+let resizeObserver: ResizeObserver | null = null
+let mediaQuery: MediaQueryList | null = null
 
 const roomCodeParam = computed(() => String(route.params.roomId || ''))
 const roomTitle = computed(() => roomStore.currentRoom?.name ?? `房间 ${roomCodeParam.value}`)
@@ -116,6 +125,8 @@ const submitDisabled = computed(
 )
 
 onMounted(async () => {
+  initializeDesktopPanelSync()
+
   if (!authStore.isAuthenticated) {
     await router.push('/login')
     return
@@ -129,6 +140,18 @@ onMounted(async () => {
     await joinCurrentRoom(roomCodeParam.value)
   }
 })
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+
+  if (mediaQuery) {
+    mediaQuery.removeEventListener('change', handleDesktopMediaChange)
+  }
+})
+
+const desktopSidePanelHeight = computed(() =>
+  isDesktopLayout.value && sidePanelHeight.value ? sidePanelHeight.value : null
+)
 
 async function joinCurrentRoom(code: string) {
   try {
@@ -189,5 +212,37 @@ async function handleFinishGame() {
   } catch (error) {
     message.error(error instanceof Error ? error.message : '结束游戏失败')
   }
+}
+
+function initializeDesktopPanelSync() {
+  mediaQuery = window.matchMedia('(min-width: 1280px)')
+  isDesktopLayout.value = mediaQuery.matches
+  mediaQuery.addEventListener('change', handleDesktopMediaChange)
+
+  resizeObserver = new ResizeObserver(() => {
+    updateSidePanelHeight()
+  })
+
+  if (centerColumnRef.value) {
+    resizeObserver.observe(centerColumnRef.value)
+  }
+
+  void nextTick(() => {
+    updateSidePanelHeight()
+  })
+}
+
+function handleDesktopMediaChange(event: MediaQueryListEvent) {
+  isDesktopLayout.value = event.matches
+  updateSidePanelHeight()
+}
+
+function updateSidePanelHeight() {
+  if (!isDesktopLayout.value || !centerColumnRef.value) {
+    sidePanelHeight.value = null
+    return
+  }
+
+  sidePanelHeight.value = Math.ceil(centerColumnRef.value.getBoundingClientRect().height)
 }
 </script>

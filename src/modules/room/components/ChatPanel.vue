@@ -1,5 +1,9 @@
 <template>
-  <NCard class="flex h-full rounded-3xl border-0 shadow-soft" :content-style="{ padding: '14px 16px' }">
+  <NCard
+    class="flex h-full rounded-3xl border-0 shadow-soft"
+    :content-style="{ padding: '14px 16px' }"
+    :style="cardStyle"
+  >
     <div class="flex h-full min-h-0 flex-1 flex-col gap-3">
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -49,6 +53,7 @@ import type { ChatMessage } from '@/stores/chat'
 
 const props = defineProps<{
   messages: ChatMessage[]
+  panelHeight?: number | null
 }>()
 
 const TRANSIENT_MESSAGE_FADE_MS = 90 * 1000
@@ -56,6 +61,7 @@ const TRANSIENT_MESSAGE_REMOVE_MS = 180 * 1000
 
 const listRef = ref<HTMLElement | null>(null)
 const nowTick = ref(Date.now())
+const cardStyle = computed(() => (props.panelHeight ? { height: `${props.panelHeight}px` } : undefined))
 let timer: number | null = null
 
 const visibleMessages = computed(() =>
@@ -73,12 +79,16 @@ const visibleMessages = computed(() =>
 )
 
 watch(
-  () => visibleMessages.value.map((message) => message.id).join('|'),
+  () => visibleMessages.value.map((message) => `${message.id}:${message.createdAt}`).join('|'),
   async () => {
     await nextTick()
 
     if (listRef.value) {
-      listRef.value.scrollTop = listRef.value.scrollHeight
+      requestAnimationFrame(() => {
+        if (listRef.value) {
+          listRef.value.scrollTop = listRef.value.scrollHeight
+        }
+      })
     }
   },
   { immediate: true }
