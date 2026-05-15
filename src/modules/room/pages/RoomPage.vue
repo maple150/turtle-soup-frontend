@@ -14,40 +14,48 @@
     />
 
     <div class="grid items-stretch gap-4 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-      <QuestionList
-        :questions="gameStore.questionList"
-        :answers="gameStore.answerRecords"
-        :panel-height="desktopSidePanelHeight"
-      />
-
-      <div ref="centerColumnRef" class="grid h-full content-start gap-4">
-        <SoupPanel
-          :soup-title="gameStore.soupTitle"
-          :prompt="gameStore.prompt"
-          :host-hint="gameStore.hostHint"
-          :phase-label="gameStore.phaseLabel"
-          :current-round="gameStore.currentRound"
-          :total-rounds="gameStore.totalRounds"
-          :formatted-timer="realtimeStatus"
+      <div class="h-full" :style="desktopColumnStyle">
+        <QuestionList
           :questions="gameStore.questionList"
           :answers="gameStore.answerRecords"
-        />
-
-        <MessageInput
-          v-model="messageDraft"
-          v-model:mode="messageMode"
-          :disabled="submitDisabled"
-          :can-start-game="canStartGame"
-          :can-finish-game="canFinishGame"
-          :start-game-hint="startGameHint"
-          @submit="handleSubmitInput"
-          @clear="messageDraft = ''"
-          @start-game="handleStartGame"
-          @finish-game="handleFinishGame"
+          :panel-height="desktopColumnHeight"
         />
       </div>
 
-      <ChatPanel :messages="chatStore.activeMessages" :panel-height="desktopSidePanelHeight" />
+      <div class="h-full" :style="desktopColumnStyle">
+        <div ref="centerMeasureRef" class="flex h-full min-h-0 flex-col gap-4">
+          <SoupPanel
+            :soup-title="gameStore.soupTitle"
+            :prompt="gameStore.prompt"
+            :host-hint="gameStore.hostHint"
+            :phase-label="gameStore.phaseLabel"
+            :current-round="gameStore.currentRound"
+            :total-rounds="gameStore.totalRounds"
+            :formatted-timer="realtimeStatus"
+            :questions="gameStore.questionList"
+            :answers="gameStore.answerRecords"
+          />
+
+          <div class="mt-auto">
+            <MessageInput
+              v-model="messageDraft"
+              v-model:mode="messageMode"
+              :disabled="submitDisabled"
+              :can-start-game="canStartGame"
+              :can-finish-game="canFinishGame"
+              :start-game-hint="startGameHint"
+              @submit="handleSubmitInput"
+              @clear="messageDraft = ''"
+              @start-game="handleStartGame"
+              @finish-game="handleFinishGame"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="h-full" :style="desktopColumnStyle">
+        <ChatPanel :messages="chatStore.activeMessages" :panel-height="desktopColumnHeight" />
+      </div>
     </div>
   </section>
 </template>
@@ -79,7 +87,7 @@ const chatStore = useChatStore()
 
 const messageDraft = ref('')
 const messageMode = ref<'chat' | 'question'>('chat')
-const centerColumnRef = ref<HTMLElement | null>(null)
+const centerMeasureRef = ref<HTMLElement | null>(null)
 const sidePanelHeight = ref<number | null>(null)
 const isDesktopLayout = ref(false)
 let resizeObserver: ResizeObserver | null = null
@@ -149,8 +157,12 @@ onBeforeUnmount(() => {
   }
 })
 
-const desktopSidePanelHeight = computed(() =>
+const desktopColumnHeight = computed(() =>
   isDesktopLayout.value && sidePanelHeight.value ? sidePanelHeight.value : null
+)
+
+const desktopColumnStyle = computed(() =>
+  desktopColumnHeight.value ? { height: `${desktopColumnHeight.value}px` } : undefined
 )
 
 async function joinCurrentRoom(code: string) {
@@ -223,8 +235,8 @@ function initializeDesktopPanelSync() {
     updateSidePanelHeight()
   })
 
-  if (centerColumnRef.value) {
-    resizeObserver.observe(centerColumnRef.value)
+  if (centerMeasureRef.value) {
+    resizeObserver.observe(centerMeasureRef.value)
   }
 
   void nextTick(() => {
@@ -238,11 +250,11 @@ function handleDesktopMediaChange(event: MediaQueryListEvent) {
 }
 
 function updateSidePanelHeight() {
-  if (!isDesktopLayout.value || !centerColumnRef.value) {
+  if (!isDesktopLayout.value || !centerMeasureRef.value) {
     sidePanelHeight.value = null
     return
   }
 
-  sidePanelHeight.value = Math.ceil(centerColumnRef.value.getBoundingClientRect().height)
+  sidePanelHeight.value = Math.ceil(centerMeasureRef.value.scrollHeight)
 }
 </script>
