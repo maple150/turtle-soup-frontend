@@ -17,7 +17,7 @@ export interface ConnectEventPayload {
   roomCode: string
   userId: string
   nickname: string
-  role: 'host' | 'player' | 'spectator'
+  role: 'host' | 'moderator' | 'player' | 'spectator'
 }
 
 export interface DisconnectEventPayload {
@@ -33,7 +33,7 @@ export interface SocketErrorPayload {
 export interface WsRoomMemberPayload {
   userId: string
   nickname: string
-  role: 'host' | 'player' | 'spectator'
+  role: 'host' | 'moderator' | 'player' | 'spectator'
   online: boolean
   connectedAt: number
   lastSeenAt: number

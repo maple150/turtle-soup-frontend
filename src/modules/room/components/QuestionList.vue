@@ -1,7 +1,7 @@
 <template>
   <NCard
-    class="flex h-full rounded-3xl border-0 shadow-soft"
-    :content-style="{ padding: '14px 16px' }"
+    class="flex h-full overflow-hidden rounded-3xl border-0 shadow-soft"
+    :content-style="{ padding: '14px 16px', height: '100%' }"
     :style="cardStyle"
   >
     <div class="flex h-full min-h-0 flex-1 flex-col gap-3">
@@ -13,22 +13,24 @@
         <NTag size="small" type="info">{{ questions.length }} 条</NTag>
       </div>
 
-      <div class="flex min-h-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div ref="listRef" class="flex-1 space-y-3 overflow-y-auto pr-1">
+      <div class="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div ref="listRef" class="room-scroll flex-1 space-y-3 overflow-y-scroll pr-1">
           <div
             v-for="question in questions"
             :key="question.id"
-            class="rounded-2xl border border-slate-200 bg-white px-4 py-3"
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3"
           >
             <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
+              <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-2">
                   <span class="truncate font-semibold text-slate-900">{{ question.senderName }}</span>
                   <NTag size="tiny" :type="question.status === 'pending' ? 'warning' : 'success'">
                     {{ QUESTION_STATUS_LABELS[question.status] }}
                   </NTag>
                 </div>
-                <div class="mt-2 text-sm leading-6 text-slate-700">{{ question.content }}</div>
+                <div class="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                  {{ question.content }}
+                </div>
               </div>
               <span class="shrink-0 text-[11px] text-slate-400">{{ formatTime(question.createdAt) }}</span>
             </div>
@@ -50,7 +52,7 @@
                   {{ formatTime(answerByQuestionId[question.id].createdAt) }}
                 </span>
               </div>
-              <div class="mt-1.5 text-sm leading-6 text-slate-600">
+              <div class="mt-1.5 break-words whitespace-pre-wrap text-sm leading-6 text-slate-600">
                 {{ answerByQuestionId[question.id].content }}
               </div>
             </div>

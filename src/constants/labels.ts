@@ -17,6 +17,7 @@ export const ROOM_MODE_LABELS = {
 
 export const ROOM_ROLE_LABELS = {
   host: '房主',
+  moderator: '协管',
   player: '玩家',
   spectator: '旁观'
 } as const

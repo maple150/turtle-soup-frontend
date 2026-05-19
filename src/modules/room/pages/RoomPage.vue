@@ -24,19 +24,21 @@
 
       <div class="h-full" :style="desktopColumnStyle">
         <div ref="centerMeasureRef" class="flex h-full min-h-0 flex-col gap-4">
-          <SoupPanel
-            :soup-title="gameStore.soupTitle"
-            :prompt="gameStore.prompt"
-            :host-hint="gameStore.hostHint"
-            :phase-label="gameStore.phaseLabel"
-            :current-round="gameStore.currentRound"
-            :total-rounds="gameStore.totalRounds"
-            :formatted-timer="realtimeStatus"
-            :questions="gameStore.questionList"
-            :answers="gameStore.answerRecords"
-          />
+          <div ref="soupPanelRef">
+            <SoupPanel
+              :soup-title="gameStore.soupTitle"
+              :prompt="gameStore.prompt"
+              :host-hint="gameStore.hostHint"
+              :phase-label="gameStore.phaseLabel"
+              :current-round="gameStore.currentRound"
+              :total-rounds="gameStore.totalRounds"
+              :formatted-timer="realtimeStatus"
+              :questions="gameStore.questionList"
+              :answers="gameStore.answerRecords"
+            />
+          </div>
 
-          <div class="mt-auto">
+          <div ref="inputPanelRef" class="mt-auto">
             <MessageInput
               v-model="messageDraft"
               v-model:mode="messageMode"
@@ -88,6 +90,8 @@ const chatStore = useChatStore()
 const messageDraft = ref('')
 const messageMode = ref<'chat' | 'question'>('chat')
 const centerMeasureRef = ref<HTMLElement | null>(null)
+const soupPanelRef = ref<HTMLElement | null>(null)
+const inputPanelRef = ref<HTMLElement | null>(null)
 const sidePanelHeight = ref<number | null>(null)
 const isDesktopLayout = ref(false)
 let resizeObserver: ResizeObserver | null = null
@@ -107,7 +111,11 @@ const realtimeStatus = computed(() => (roomStore.connected ? '实时同步中' :
 const currentUserId = computed(() => authStore.currentUserId ?? userStore.profile?.id ?? '')
 
 const canManageGame = computed(() =>
-  roomMembers.value.some((member) => member.userId === currentUserId.value && member.role === 'host')
+  roomMembers.value.some(
+    (member) =>
+      member.userId === currentUserId.value &&
+      (member.role === 'host' || member.role === 'moderator')
+  )
 )
 
 const canStartGame = computed(
@@ -240,6 +248,14 @@ function initializeDesktopPanelSync() {
   }
 
   void nextTick(() => {
+    if (soupPanelRef.value) {
+      resizeObserver?.observe(soupPanelRef.value)
+    }
+
+    if (inputPanelRef.value) {
+      resizeObserver?.observe(inputPanelRef.value)
+    }
+
     updateSidePanelHeight()
   })
 }
@@ -255,6 +271,13 @@ function updateSidePanelHeight() {
     return
   }
 
-  sidePanelHeight.value = Math.ceil(centerMeasureRef.value.scrollHeight)
+  const styles = window.getComputedStyle(centerMeasureRef.value)
+  const gap = Number.parseFloat(styles.rowGap || styles.gap || '0') || 0
+  const naturalHeight =
+    soupPanelRef.value && inputPanelRef.value
+      ? soupPanelRef.value.offsetHeight + inputPanelRef.value.offsetHeight + gap
+      : centerMeasureRef.value.scrollHeight
+
+  sidePanelHeight.value = Math.ceil(naturalHeight)
 }
 </script>

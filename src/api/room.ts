@@ -6,7 +6,7 @@ import request, {
 
 export type RoomMode = 'casual' | 'ranked' | 'private'
 export type RoomStatus = 'waiting' | 'playing' | 'revealed' | 'finished'
-export type RoomRole = 'host' | 'player' | 'spectator'
+export type RoomRole = 'host' | 'moderator' | 'player' | 'spectator'
 
 export interface RoomSettings {
   allowSpectators: boolean

@@ -1,7 +1,7 @@
 <template>
   <NCard
-    class="flex h-full rounded-3xl border-0 shadow-soft"
-    :content-style="{ padding: '14px 16px' }"
+    class="flex h-full overflow-hidden rounded-3xl border-0 shadow-soft"
+    :content-style="{ padding: '14px 16px', height: '100%' }"
     :style="cardStyle"
   >
     <div class="flex h-full min-h-0 flex-1 flex-col gap-3">
@@ -13,12 +13,12 @@
         <NTag size="small" type="info">{{ visibleMessages.length }} 条</NTag>
       </div>
 
-      <div class="flex min-h-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
-        <div ref="listRef" class="flex-1 space-y-3 overflow-y-auto pr-1">
+      <div class="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <div ref="listRef" class="room-scroll flex-1 space-y-3 overflow-y-scroll pr-1">
           <div
             v-for="message in visibleMessages"
             :key="message.id"
-            class="rounded-2xl border border-slate-200 px-4 py-3 transition-opacity duration-700"
+            class="overflow-hidden rounded-2xl border border-slate-200 px-4 py-3 transition-opacity duration-700"
             :class="[
               message.kind === 'system' ? 'border-amber-100 bg-amber-50' : 'bg-white',
               messageOpacityClass(message)
@@ -31,7 +31,9 @@
               </div>
               <span class="text-xs text-slate-400">{{ formatTime(message.createdAt) }}</span>
             </div>
-            <div class="mt-2 text-sm leading-7 text-slate-600">{{ message.content }}</div>
+            <div class="mt-2 break-words whitespace-pre-wrap text-sm leading-7 text-slate-600">
+              {{ message.content }}
+            </div>
           </div>
 
           <NEmpty
